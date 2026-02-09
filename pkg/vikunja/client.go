@@ -124,10 +124,6 @@ func (c *Client) GetTasks(ctx context.Context, projectID int64) ([]Task, error) 
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// For debugging: Log the raw tasks received, including buckets
-	tasksBytes, _ := json.MarshalIndent(tasks, "", "  ")
-	fmt.Printf("DEBUG: Raw Tasks received from API: %s\n", string(tasksBytes))
-
 	return tasks, nil
 }
 
@@ -156,10 +152,6 @@ func (c *Client) GetTask(ctx context.Context, id int64) (*Task, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-
-	// For debugging: Log the raw task received, including buckets
-	taskBytes, _ := json.MarshalIndent(task, "", "  ")
-	fmt.Printf("DEBUG: Raw Task %d received from API: %s\n", id, string(taskBytes))
 
 	return &task, nil
 }

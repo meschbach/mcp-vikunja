@@ -39,30 +39,73 @@ export VIKUNJA_TOKEN="your-api-token"
 
 ### 3. Run the Server
 
-**Option A: Stdio Transport (default - for local CLI tools)**
+The MCP server now uses explicit subcommands for different transport modes:
+
+**Option A: Stdio Transport (for local CLI tools)**
 ```bash
-./bin/mcp-vikunja
+./bin/mcp-vikunja stdio
 ```
 
 **Option B: HTTP Transport (for web applications and remote access)**
 ```bash
-export MCP_TRANSPORT="http"
-./bin/mcp-vikunja
+./bin/mcp-vikunja server
 # Server will start on http://localhost:8080
+```
+
+**Option C: Show Help**
+```bash
+./bin/mcp-vikunja
+# Shows available commands and usage examples
 ```
 
 ## Transport Modes
 
-### Stdio Transport (Default)
+### Stdio Transport
 - **Best for**: Local CLI tools, development environments
-- **Usage**: Default mode, communicates over standard I/O
-- **Example**: `./bin/mcp-vikunja`
+- **Usage**: `./bin/mcp-vikunja stdio`
+- **Features**: Communicates over standard I/O
+- **Example**: `VIKUNJA_HOST=https://example.com VIKUNJA_TOKEN=token ./bin/mcp-vikunja stdio`
 
 ### HTTP Transport
 - **Best for**: Web applications, remote access, multiple clients
-- **Usage**: Set `MCP_TRANSPORT=http`
-- **Features**: Session management, concurrent connections
-- **Example**: `MCP_TRANSPORT=http MCP_HTTP_PORT=9000 ./bin/mcp-vikunja`
+- **Usage**: `./bin/mcp-vikunja server`
+- **Features**: Session management, concurrent connections, streamable HTTP
+- **Example**: `VIKUNJA_HOST=https://example.com VIKUNJA_TOKEN=token ./bin/mcp-vikunja server --http-port 9000`
+
+## CLI Commands
+
+The MCP server provides a rich command-line interface:
+
+### Server Commands
+- `mcp-vikunja server` - Start HTTP + Streamable transport server
+- `mcp-vikunja stdio` - Start stdio transport server
+
+### Configuration Commands
+- `mcp-vikunja config show` - Display current configuration
+- `mcp-vikunja config validate` - Validate configuration and test connectivity
+
+### Utility Commands
+- `mcp-vikunja health` - Test Vikunja connection
+- `mcp-vikunja version` - Show version and build information
+- `mcp-vikunja help` - Show comprehensive help
+
+### Examples
+```bash
+# Start HTTP server with custom settings
+./bin/mcp-vikunja server --http-host 0.0.0.0 --http-port 9000 --stateless
+
+# Start stdio server with verbose logging
+./bin/mcp-vikunja stdio --verbose --vikunja-host https://example.com
+
+# Show current configuration
+./bin/mcp-vikunja config show --format json
+
+# Validate configuration
+./bin/mcp-vikunja config validate
+
+# Test Vikunja connectivity
+./bin/mcp-vikunja health --vikunja-host https://example.com --vikunja-token token
+```
 
 ## Configuration
 
@@ -95,7 +138,7 @@ The server provides the following MCP tools:
 
 ```bash
 # Start server with HTTP transport
-MCP_TRANSPORT=http VIKUNJA_HOST=https://example.com VIKUNJA_TOKEN=your-token ./bin/mcp-vikunja &
+VIKUNJA_HOST=https://example.com VIKUNJA_TOKEN=your-token ./bin/mcp-vikunja server &
 
 # Test the server
 curl -X POST http://localhost:8080 \
@@ -126,11 +169,9 @@ CMD ["./mcp-vikunja"]
 # Build and run with Docker
 docker build -t mcp-vikunja .
 docker run -p 8080:8080 \
-  -e MCP_TRANSPORT=http \
-  -e MCP_HTTP_HOST=0.0.0.0 \
   -e VIKUNJA_HOST=https://your-vikunja.com \
   -e VIKUNJA_TOKEN=your-token \
-  mcp-vikunja
+  mcp-vikunja server --http-host 0.0.0.0
 ```
 
 ## Development

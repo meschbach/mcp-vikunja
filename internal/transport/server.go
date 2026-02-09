@@ -76,8 +76,13 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 	// Start the HTTP server in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errChan <- fmt.Errorf("HTTP server failed: %w", err)
+		if err := httpServer.ListenAndServe(); err != nil {
+			if err != http.ErrServerClosed {
+				errChan <- fmt.Errorf("HTTP server failed: %w", err)
+			} else {
+				// Send nil error to signal graceful shutdown completion
+				errChan <- nil
+			}
 		}
 	}()
 
@@ -92,11 +97,15 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 			return fmt.Errorf("HTTP server shutdown failed: %w", err)
 		}
 
-		<-errChan // Wait for the server goroutine to finish
+		// Wait for the server goroutine to finish
+		err := <-errChan
+		if err != nil {
+			return err
+		}
 		return nil
 
 	case err := <-errChan:
-		// Server failed to start
+		// Server failed to start or shutdown completed
 		return err
 	}
 }
