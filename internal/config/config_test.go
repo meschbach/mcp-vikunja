@@ -83,9 +83,11 @@ func TestLoad_HTTPConfig(t *testing.T) {
 func TestLoad_VikunjaConfig(t *testing.T) {
 	os.Setenv("VIKUNJA_HOST", "https://vikunja.example.com")
 	os.Setenv("VIKUNJA_TOKEN", "test-token-123")
+	os.Setenv("VIKUNJA_INSECURE", "true")
 	defer func() {
 		os.Unsetenv("VIKUNJA_HOST")
 		os.Unsetenv("VIKUNJA_TOKEN")
+		os.Unsetenv("VIKUNJA_INSECURE")
 	}()
 
 	cfg, err := Load(nil)
@@ -93,6 +95,7 @@ func TestLoad_VikunjaConfig(t *testing.T) {
 
 	assert.Equal(t, "https://vikunja.example.com", cfg.Vikunja.Host)
 	assert.Equal(t, "test-token-123", cfg.Vikunja.Token)
+	assert.True(t, cfg.Vikunja.Insecure)
 }
 
 func TestLoad_InvalidHTTPPort(t *testing.T) {
@@ -140,7 +143,7 @@ func TestValidate_ValidHTTPConfig(t *testing.T) {
 		Transport: TransportHTTP,
 		HTTP: HTTPConfig{
 			Host: "localhost",
-			Port: 8080,
+			Port: 19876,
 		},
 		Vikunja: VikunjaConfig{
 			Host:  "https://vikunja.example.com",

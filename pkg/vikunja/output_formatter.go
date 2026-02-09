@@ -3,6 +3,7 @@ package vikunja
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 // OutputFormatter defines the interface for formatting output
@@ -34,6 +35,38 @@ func (f *JSONFormatter) Format(data interface{}) (string, error) {
 		return "", fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 	return string(jsonData), nil
+}
+
+// isHandlersProject checks if the given interface is the handlers.Project type (has URI field)
+func (f *MarkdownFormatter) isHandlersProject(v interface{}) bool {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return false
+	}
+
+	// Check for ID, Title, and URI fields
+	idField := val.FieldByName("ID")
+	titleField := val.FieldByName("Title")
+	uriField := val.FieldByName("URI")
+
+	return idField.IsValid() && titleField.IsValid() && uriField.IsValid()
+}
+
+// formatHandlersProject formats a handlers.Project type (with URI field) as markdown
+func (f *MarkdownFormatter) formatHandlersProject(v interface{}) string {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	id := val.FieldByName("ID").Int()
+	title := val.FieldByName("Title").String()
+	uri := val.FieldByName("URI").String()
+
+	return fmt.Sprintf("# %s\n\n- **ID**: %d\n- **URI**: %s\n", title, id, uri)
 }
 
 // MarkdownFormatter formats data as markdown using the Formatter
@@ -90,6 +123,10 @@ func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
 	case ViewsOutput:
 		return f.formatter.FormatProjectAndViewListMarkdown(v.Project, v.Views), nil
 	default:
+		// Check if this is the handlers.Project type (with URI field)
+		if f.isHandlersProject(v) {
+			return f.formatHandlersProject(v), nil
+		}
 		// Fallback to JSON for unknown types
 		return fmt.Sprintf("<!-- Unsupported type for markdown, falling back to JSON -->\n```json\n%s\n```",
 			func() string {

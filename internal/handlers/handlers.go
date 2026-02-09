@@ -22,6 +22,8 @@ type ListTasksInput struct {
 	ProjectTitle string `json:"project_title,omitempty" jsonschema:"Optional project title (defaults to 'Inbox')"`
 	ViewID       string `json:"view_id,omitempty" jsonschema:"Optional project view ID"`
 	ViewTitle    string `json:"view_title,omitempty" jsonschema:"Optional project view title (defaults to 'Kanban')"`
+	BucketID     string `json:"bucket_id,omitempty" jsonschema:"Optional bucket ID to filter tasks"`
+	BucketTitle  string `json:"bucket_title,omitempty" jsonschema:"Optional bucket title to filter tasks"`
 }
 
 // TaskSummary is a minimal version of a task for listing
@@ -78,7 +80,7 @@ type ListProjectsInput struct {
 }
 
 type ListProjectsOutput struct {
-	Projects []Project `json:"projects"`
+	Projects []vikunja.Project `json:"projects"`
 }
 
 type CreateTaskInput struct {
@@ -464,7 +466,8 @@ func createVikunjaClient() (*vikunja.Client, error) {
 		return nil, fmt.Errorf("VIKUNJA_HOST and VIKUNJA_TOKEN environment variables required")
 	}
 
-	return vikunja.NewClient(host, token, false)
+	insecure := os.Getenv("VIKUNJA_INSECURE") == "true"
+	return vikunja.NewClient(host, token, insecure)
 }
 
 // findProjectByIDOrTitle finds a project by ID or title
@@ -787,7 +790,7 @@ func Register(s *mcp.Server, cfg *config.Config) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_tasks",
-		Description: "List tasks from Vikunja",
+		Description: "List tasks from Vikunja filtering by criteria",
 	}, listTasksHandler)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -827,17 +830,30 @@ func Register(s *mcp.Server, cfg *config.Config) {
 }
 
 func listTasksHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
-	host := os.Getenv("VIKUNJA_HOST")
-	token := os.Getenv("VIKUNJA_TOKEN")
-	if host == "" || token == "" {
-		return nil, ListTasksOutput{}, fmt.Errorf("VIKUNJA_HOST and VIKUNJA_TOKEN environment variables required")
+	client, err := createVikunjaClient()
+	if err != nil {
+		return nil, ListTasksOutput{}, err
 	}
 
-	client, err := vikunja.NewClient(host, token, false)
-	if err != nil {
+	// Validate bucket filtering parameters early to fail fast
+	if input.BucketID != "" && input.BucketTitle != "" {
 		return &mcp.CallToolResult{
 			IsError: true,
-		}, ListTasksOutput{}, fmt.Errorf("failed to create client: %w", err)
+		}, ListTasksOutput{}, fmt.Errorf("cannot specify both bucket_id and bucket_title")
+	}
+
+	var targetBucketID *int64
+	var targetBucketTitle string
+	if input.BucketID != "" {
+		bucketID, err := strconv.ParseInt(input.BucketID, 10, 64)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+			}, ListTasksOutput{}, fmt.Errorf("invalid bucket_id: %s", input.BucketID)
+		}
+		targetBucketID = &bucketID
+	} else if input.BucketTitle != "" {
+		targetBucketTitle = input.BucketTitle
 	}
 
 	var project *Project
@@ -935,6 +951,48 @@ func listTasksHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListTas
 		}, ListTasksOutput{}, fmt.Errorf("failed to get view tasks: %w", err)
 	}
 
+	// Handle bucket filtering if specified
+	if input.BucketID != "" || input.BucketTitle != "" {
+		// Check if this is a kanban view (has buckets)
+		if len(viewTasksResp.Buckets) == 0 && len(viewTasksResp.Tasks) > 0 {
+			return &mcp.CallToolResult{
+				IsError: true,
+			}, ListTasksOutput{}, fmt.Errorf("bucket filtering not supported for non-kanban views")
+		}
+
+		var foundBucket *vikunja.Bucket
+		if targetBucketID != nil {
+			// Search by bucket ID
+			for i := range viewTasksResp.Buckets {
+				if viewTasksResp.Buckets[i].ID == *targetBucketID {
+					foundBucket = &viewTasksResp.Buckets[i]
+					break
+				}
+			}
+			if foundBucket == nil {
+				return &mcp.CallToolResult{
+					IsError: true,
+				}, ListTasksOutput{}, fmt.Errorf("bucket with ID %q not found in view %q", *targetBucketID, targetViewTitle)
+			}
+		} else if targetBucketTitle != "" {
+			// Search by bucket title
+			for i := range viewTasksResp.Buckets {
+				if viewTasksResp.Buckets[i].Title == targetBucketTitle {
+					foundBucket = &viewTasksResp.Buckets[i]
+					break
+				}
+			}
+			if foundBucket == nil {
+				return &mcp.CallToolResult{
+					IsError: true,
+				}, ListTasksOutput{}, fmt.Errorf("bucket with title %q not found in view %q", targetBucketTitle, targetViewTitle)
+			}
+		}
+
+		// Filter to only include the found bucket
+		viewTasksResp.Buckets = []vikunja.Bucket{*foundBucket}
+	}
+
 	vt := ViewTasksSummary{
 		ViewID:    targetViewID,
 		ViewTitle: targetViewTitle,
@@ -995,15 +1053,9 @@ func listTasksHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListTas
 }
 
 func getTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, input GetTaskInput) (*mcp.CallToolResult, GetTaskOutput, error) {
-	host := os.Getenv("VIKUNJA_HOST")
-	token := os.Getenv("VIKUNJA_TOKEN")
-	if host == "" || token == "" {
-		return nil, GetTaskOutput{}, fmt.Errorf("VIKUNJA_HOST and VIKUNJA_TOKEN environment variables required")
-	}
-
-	client, err := vikunja.NewClient(host, token, false)
+	client, err := createVikunjaClient()
 	if err != nil {
-		return nil, GetTaskOutput{}, fmt.Errorf("failed to create client: %w", err)
+		return nil, GetTaskOutput{}, err
 	}
 
 	taskID, err := strconv.ParseInt(input.TaskID, 10, 64)
@@ -1090,15 +1142,9 @@ func getTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, input GetTaskIn
 }
 
 func listBucketsHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListBucketsInput) (*mcp.CallToolResult, ListBucketsOutput, error) {
-	host := os.Getenv("VIKUNJA_HOST")
-	token := os.Getenv("VIKUNJA_TOKEN")
-	if host == "" || token == "" {
-		return nil, ListBucketsOutput{}, fmt.Errorf("VIKUNJA_HOST and VIKUNJA_TOKEN environment variables required")
-	}
-
-	client, err := vikunja.NewClient(host, token, false)
+	client, err := createVikunjaClient()
 	if err != nil {
-		return nil, ListBucketsOutput{}, fmt.Errorf("failed to create client: %w", err)
+		return nil, ListBucketsOutput{}, err
 	}
 
 	projectID, err := strconv.ParseInt(input.ProjectID, 10, 64)
@@ -1129,15 +1175,9 @@ func listBucketsHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListB
 }
 
 func listProjectsHandler(ctx context.Context, _ *mcp.CallToolRequest, _ ListProjectsInput) (*mcp.CallToolResult, ListProjectsOutput, error) {
-	host := os.Getenv("VIKUNJA_HOST")
-	token := os.Getenv("VIKUNJA_TOKEN")
-	if host == "" || token == "" {
-		return nil, ListProjectsOutput{}, fmt.Errorf("VIKUNJA_HOST and VIKUNJA_TOKEN environment variables required")
-	}
-
-	client, err := vikunja.NewClient(host, token, false)
+	client, err := createVikunjaClient()
 	if err != nil {
-		return nil, ListProjectsOutput{}, fmt.Errorf("failed to create client: %w", err)
+		return nil, ListProjectsOutput{}, err
 	}
 
 	projects, err := client.GetProjects(ctx)
@@ -1146,15 +1186,7 @@ func listProjectsHandler(ctx context.Context, _ *mcp.CallToolRequest, _ ListProj
 	}
 
 	output := ListProjectsOutput{
-		Projects: make([]Project, len(projects)),
-	}
-
-	for i, p := range projects {
-		output.Projects[i] = Project{
-			ID:    p.ID,
-			Title: p.Title,
-			URI:   fmt.Sprintf("vikunja://projects/%d", p.ID),
-		}
+		Projects: projects,
 	}
 
 	data, err := outputFormatter.Format(output.Projects)
@@ -1174,15 +1206,9 @@ func createTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, _ CreateTask
 }
 
 func findProjectByNameHandler(ctx context.Context, _ *mcp.CallToolRequest, input FindProjectByNameInput) (*mcp.CallToolResult, FindProjectByNameOutput, error) {
-	host := os.Getenv("VIKUNJA_HOST")
-	token := os.Getenv("VIKUNJA_TOKEN")
-	if host == "" || token == "" {
-		return nil, FindProjectByNameOutput{}, fmt.Errorf("VIKUNJA_HOST and VIKUNJA_TOKEN environment variables required")
-	}
-
-	client, err := vikunja.NewClient(host, token, false)
+	client, err := createVikunjaClient()
 	if err != nil {
-		return nil, FindProjectByNameOutput{}, fmt.Errorf("failed to create client: %w", err)
+		return nil, FindProjectByNameOutput{}, err
 	}
 
 	projects, err := client.GetProjects(ctx)

@@ -284,7 +284,7 @@ func (f *Formatter) FormatViewTasks(vt *ViewTasks) error {
 				if t.Done {
 					tc = doneColor
 				}
-				fmt.Fprintf(f.output, "  - [%d] %s\n", t.ID, tc.Sprint(t.Title))
+				fmt.Fprintf(f.output, "  - [Task %d] %s\n", t.ID, tc.Sprint(t.Title))
 			}
 		}
 		fmt.Fprintln(f.output)
@@ -413,15 +413,15 @@ func (f *Formatter) FormatProjectsAsMarkdown(projects []Project) string {
 		buf.WriteString(fmt.Sprintf("- **ID**: %d\n", project.ID))
 		buf.WriteString(fmt.Sprintf("- **URI**: [vikunja://projects/%d](vikunja://projects/%d)\n", project.ID, project.ID))
 
-		if project.Identifier != "" {
+		if project.Identifier != "" && strings.TrimSpace(project.Identifier) != "" {
 			buf.WriteString(fmt.Sprintf("- **Identifier**: `%s`\n", project.Identifier))
 		}
 
-		if !project.Created.IsZero() {
+		if !project.Created.IsZero() && project.Created.Year() > 1970 {
 			buf.WriteString(fmt.Sprintf("- **Created**: %s\n", project.Created.Format("2006-01-02")))
 		}
 
-		if project.Description != "" {
+		if project.Description != "" && strings.TrimSpace(project.Description) != "" {
 			buf.WriteString(fmt.Sprintf("\n**Description**:\n%s\n", project.Description))
 		}
 
@@ -540,7 +540,7 @@ func (f *Formatter) FormatViewTasksAsMarkdown(vt *ViewTasks) string {
 				}
 
 				title := strings.ReplaceAll(task.Title, "|", "\\|") // Escape pipe characters
-				buf.WriteString(fmt.Sprintf("- %s [%d] %s\n", status, task.ID, title))
+				buf.WriteString(fmt.Sprintf("- %s [Task %d] %s\n", status, task.ID, title))
 			}
 			buf.WriteString("\n")
 		}
@@ -568,7 +568,7 @@ func (f *Formatter) FormatViewTasksSummaryAsMarkdown(vt *ViewTasksSummary) strin
 				// Note: TaskSummary doesn't have Done field, so we can't check completion status
 
 				title := strings.ReplaceAll(task.Title, "|", "\\|") // Escape pipe characters
-				buf.WriteString(fmt.Sprintf("- [%d] %s\n", task.ID, title))
+				buf.WriteString(fmt.Sprintf("- [Task %d] %s\n", task.ID, title))
 			}
 			buf.WriteString("\n")
 		}

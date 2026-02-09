@@ -276,10 +276,10 @@ func TestFormatter_FormatViewTasks(t *testing.T) {
 	expectedParts := []string{
 		"Test View (ID: 1)",
 		"Bucket 1 (ID: 10)",
-		"- [100] Task 1",
-		"- [101] Task 2",
+		"  - [Task 100] Task 1",
+		"  - [Task 101] Task 2",
 		"Bucket 2 (ID: 20) [DONE]",
-		"(no tasks)",
+		"  (no tasks)",
 	}
 
 	for _, part := range expectedParts {
@@ -389,6 +389,155 @@ A test project description
 	}
 }
 
+func TestFormatter_FormatProjectsAsMarkdown_Robustness(t *testing.T) {
+	formatter := NewFormatter(false, nil)
+
+	tests := []struct {
+		name     string
+		projects []Project
+		expected string
+	}{
+		{
+			name: "minimal project data (only required fields)",
+			projects: []Project{
+				{
+					ID:    1,
+					Title: "Minimal Project",
+				},
+			},
+			expected: `# Projects (1)
+
+## 📁 Minimal Project
+
+- **ID**: 1
+- **URI**: [vikunja://projects/1](vikunja://projects/1)
+
+---
+
+`,
+		},
+		{
+			name: "project with empty optional fields",
+			projects: []Project{
+				{
+					ID:          2,
+					Title:       "Project with Empty Fields",
+					Description: "",
+					Identifier:  "",
+					Created:     time.Time{}, // Zero time
+				},
+			},
+			expected: `# Projects (1)
+
+## 📁 Project with Empty Fields
+
+- **ID**: 2
+- **URI**: [vikunja://projects/2](vikunja://projects/2)
+
+---
+
+`,
+		},
+		{
+			name: "project with whitespace-only optional fields",
+			projects: []Project{
+				{
+					ID:          3,
+					Title:       "Project with Whitespace",
+					Description: "   ",
+					Identifier:  "   ",
+				},
+			},
+			expected: `# Projects (1)
+
+## 📁 Project with Whitespace
+
+- **ID**: 3
+- **URI**: [vikunja://projects/3](vikunja://projects/3)
+
+---
+
+`,
+		},
+		{
+			name: "project with very old date (should be ignored)",
+			projects: []Project{
+				{
+					ID:      4,
+					Title:   "Project with Old Date",
+					Created: time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			expected: `# Projects (1)
+
+## 📁 Project with Old Date
+
+- **ID**: 4
+- **URI**: [vikunja://projects/4](vikunja://projects/4)
+
+---
+
+`,
+		},
+		{
+			name: "mixed projects (some with full data, some minimal)",
+			projects: []Project{
+				{
+					ID:    5,
+					Title: "Minimal Project 1",
+				},
+				{
+					ID:          6,
+					Title:       "Full Project",
+					Description: "Complete description",
+					Identifier:  "full-proj",
+					Created:     time.Date(2023, 6, 15, 10, 30, 0, 0, time.UTC),
+				},
+				{
+					ID:    7,
+					Title: "Minimal Project 2",
+				},
+			},
+			expected: `# Projects (3)
+
+## 📁 Minimal Project 1
+
+- **ID**: 5
+- **URI**: [vikunja://projects/5](vikunja://projects/5)
+
+---
+
+## 📁 Full Project
+
+- **ID**: 6
+- **URI**: [vikunja://projects/6](vikunja://projects/6)
+- **Identifier**: ` + "`" + `full-proj` + "`" + `
+- **Created**: 2023-06-15
+
+**Description**:
+Complete description
+
+---
+
+## 📁 Minimal Project 2
+
+- **ID**: 7
+- **URI**: [vikunja://projects/7](vikunja://projects/7)
+
+---
+
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatter.FormatProjectsAsMarkdown(tt.projects)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestFormatter_FormatBucketsAsMarkdown(t *testing.T) {
 	formatter := NewFormatter(false, nil)
 
@@ -481,8 +630,8 @@ func TestFormatter_FormatViewTasksSummaryAsMarkdown(t *testing.T) {
 
 ## 📁 To Do (ID: 1)
 
-- [1] Task 1
-- [2] Task 2
+- [Task 1] Task 1
+- [Task 2] Task 2
 
 ## 📁 Done (ID: 2)
 
@@ -691,7 +840,7 @@ func TestMarkdownFormatter_ViewTasksSummaryIntegration(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "# 📋 Test Board (ID: 1)")
 	assert.Contains(t, result, "## 📁 To Do (ID: 1)")
-	assert.Contains(t, result, "[1] Test Task 1")
-	assert.Contains(t, result, "[2] Test Task 2")
+	assert.Contains(t, result, "[Task 1] Test Task 1")
+	assert.Contains(t, result, "[Task 2] Test Task 2")
 	assert.NotContains(t, result, "<!-- Unsupported type for markdown")
 }

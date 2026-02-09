@@ -149,7 +149,16 @@ func runServer(cmd *cobra.Command, args []string) error {
 			Name:    "mcp-vikunja",
 			Version: "0.1.0",
 		},
-		&mcp.ServerOptions{},
+		&mcp.ServerOptions{
+			Instructions: `Provides access to Vikunja, a project management tool providing various views
+to a set of tasks.  An instance of Vikunja contains a number of projects with a name and an ID.  Each project may contain
+a number of views of various types, such as a list, Gantt, a table, or Kanban view.  Views may have multiple buckets
+describing tasks in various life cycles.
+
+If you are searching for tasks your primary tool is 'list_tasks' which will search a Vikunja instance for the project,
+view, and buckets as you need.
+`,
+		},
 	)
 
 	// Register Vikunja tool handlers

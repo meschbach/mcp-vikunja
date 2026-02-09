@@ -41,8 +41,9 @@ type HTTPConfig struct {
 
 // VikunjaConfig contains Vikunja client specific configuration.
 type VikunjaConfig struct {
-	Host  string `json:"host"`
-	Token string `json:"token"`
+	Host     string `json:"host"`
+	Token    string `json:"token"`
+	Insecure bool   `json:"insecure"`
 }
 
 // Load loads configuration from environment variables with sensible defaults.
@@ -156,6 +157,14 @@ func loadVikunjaConfig(cfg *VikunjaConfig) error {
 
 	if token := os.Getenv("VIKUNJA_TOKEN"); token != "" {
 		cfg.Token = token
+	}
+
+	if insecure := os.Getenv("VIKUNJA_INSECURE"); insecure != "" {
+		s, err := strconv.ParseBool(insecure)
+		if err != nil {
+			return fmt.Errorf("invalid VIKUNJA_INSECURE flag: %s", insecure)
+		}
+		cfg.Insecure = s
 	}
 
 	return nil
