@@ -43,13 +43,26 @@ The MCP server now uses explicit subcommands for different transport modes:
 
 **Option A: Stdio Transport (for local CLI tools)**
 ```bash
+# Default Markdown output (recommended for AI/LLMs)
 ./bin/mcp-vikunja stdio
+
+# JSON output (for legacy compatibility)
+./bin/mcp-vikunja stdio --output-format json
+
+# Both formats together  
+./bin/mcp-vikunja stdio -o both
+
+# Environment variable setting
+VIKUNJA_OUTPUT_FORMAT=json ./bin/mcp-vikunja stdio
 ```
 
 **Option B: HTTP Transport (for web applications and remote access)**
 ```bash
+# Default Markdown output (recommended for AI/LLMs)
 ./bin/mcp-vikunja server
-# Server will start on http://localhost:8080
+
+# JSON output (for legacy compatibility)
+./bin/mcp-vikunja server --output-format json
 ```
 
 **Option C: Show Help**
@@ -112,6 +125,19 @@ The MCP server provides a rich command-line interface:
 ### Required Environment Variables
 - `VIKUNJA_HOST` - Your Vikunja instance URL
 - `VIKUNJA_TOKEN` - Your Vikunja API token
+
+### Optional Output Format Configuration
+| Variable/Flag | Default | Description |
+|---------------|---------|-------------|
+| `VIKUNJA_OUTPUT_FORMAT` | `markdown` | Output format: json, markdown, both |
+| `--output-format` / `-o` | `markdown` | CLI flag that overrides VIKUNJA_OUTPUT_FORMAT |
+
+**Output Format Precedence**: CLI flag > Environment variable > Default (markdown)
+
+**Output Format Options**:
+- `json` - Original JSON output (for legacy compatibility)
+- `markdown` - Human-readable Markdown output with tables and formatting (recommended for AI/LLMs)
+- `both` - Combined JSON and Markdown output
 
 ### Optional HTTP Configuration
 | Variable | Default | Description |

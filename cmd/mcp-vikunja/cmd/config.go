@@ -190,7 +190,7 @@ func loadConfigFromFlags(cmd *cobra.Command) (*config.Config, error) {
 	}
 
 	// Load from environment variables (this will override flags if env vars are set)
-	envCfg, err := config.Load()
+	envCfg, err := config.Load(nil) // No CLI format for config commands
 	if err != nil {
 		return nil, fmt.Errorf("failed to load environment configuration: %w", err)
 	}

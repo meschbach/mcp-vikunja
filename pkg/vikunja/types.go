@@ -134,3 +134,50 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 	Code    int    `json:"code"`
 }
+
+// TaskOutput represents the output structure for get_task operations
+// This mirrors the handlers.GetTaskOutput structure to avoid circular imports
+type TaskOutput struct {
+	Task    Task            `json:"task"`
+	Buckets *TaskBucketInfo `json:"buckets,omitempty"`
+}
+
+// ViewOutput represents the output structure for find_view operations
+// This mirrors the handlers.FindViewOutput structure to avoid circular imports
+type ViewOutput struct {
+	Project Project     `json:"project"`
+	View    ProjectView `json:"view"`
+}
+
+// ViewsOutput represents the output structure for list_views operations
+// This mirrors the handlers.ListViewsOutput structure to avoid circular imports
+type ViewsOutput struct {
+	Project Project       `json:"project"`
+	Views   []ProjectView `json:"views"`
+}
+
+// TaskSummary is a minimal version of a task for listing
+type TaskSummary struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	URI   string `json:"uri"`
+}
+
+// BucketSummary is a minimal version of a bucket for listing
+type BucketSummary struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+// BucketTasksSummary represents a bucket and its associated tasks for listing
+type BucketTasksSummary struct {
+	Bucket BucketSummary `json:"bucket"`
+	Tasks  []TaskSummary `json:"tasks,omitempty"`
+}
+
+// ViewTasksSummary represents all buckets and tasks in a view for listing
+type ViewTasksSummary struct {
+	ViewID    int64                `json:"view_id"`
+	ViewTitle string               `json:"view_title"`
+	Buckets   []BucketTasksSummary `json:"buckets,omitempty"`
+}

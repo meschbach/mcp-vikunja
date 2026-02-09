@@ -27,7 +27,7 @@ run:
 
 # Run all tests
 test:
-	go test -v ./...
+	go test -v -count 1 --timeout 1s ./...
 
 # Run tests with coverage
 test-cover:

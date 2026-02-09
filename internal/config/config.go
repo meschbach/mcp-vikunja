@@ -6,7 +6,10 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 )
 
 // TransportType defines the available transport mechanisms.
@@ -19,9 +22,10 @@ const (
 
 // Config represents the complete configuration for the MCP Vikunja server.
 type Config struct {
-	Transport TransportType `json:"transport"`
-	HTTP      HTTPConfig    `json:"http"`
-	Vikunja   VikunjaConfig `json:"vikunja"`
+	Transport    TransportType        `json:"transport"`
+	HTTP         HTTPConfig           `json:"http"`
+	Vikunja      VikunjaConfig        `json:"vikunja"`
+	OutputFormat vikunja.OutputFormat `json:"output_format"`
 }
 
 // HTTPConfig contains HTTP server specific configuration.
@@ -42,7 +46,7 @@ type VikunjaConfig struct {
 }
 
 // Load loads configuration from environment variables with sensible defaults.
-func Load() (*Config, error) {
+func Load(cliFormat *string) (*Config, error) {
 	cfg := &Config{
 		Transport: TransportStdio, // Default to stdio for backward compatibility
 		HTTP: HTTPConfig{
@@ -54,6 +58,7 @@ func Load() (*Config, error) {
 			WriteTimeout:   30 * time.Second,
 			IdleTimeout:    120 * time.Second,
 		},
+		OutputFormat: vikunja.OutputFormatMarkdown, // Default to Markdown for better AI/LLM compatibility
 	}
 
 	// Load transport type
@@ -76,6 +81,11 @@ func Load() (*Config, error) {
 	// Load Vikunja configuration
 	if err := loadVikunjaConfig(&cfg.Vikunja); err != nil {
 		return nil, fmt.Errorf("failed to load Vikunja config: %w", err)
+	}
+
+	// Load output format configuration
+	if err := loadOutputFormatConfig(&cfg.OutputFormat, cliFormat); err != nil {
+		return nil, fmt.Errorf("failed to load output format config: %w", err)
 	}
 
 	return cfg, nil
@@ -148,6 +158,46 @@ func loadVikunjaConfig(cfg *VikunjaConfig) error {
 		cfg.Token = token
 	}
 
+	return nil
+}
+
+// parseOutputFormat parses output format string into OutputFormat enum
+func parseOutputFormat(format string) (vikunja.OutputFormat, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json":
+		return vikunja.OutputFormatJSON, nil
+	case "markdown", "md":
+		return vikunja.OutputFormatMarkdown, nil
+	case "both":
+		return vikunja.OutputFormatBoth, nil
+	default:
+		return vikunja.OutputFormatJSON, fmt.Errorf("invalid output format: %s (must be 'json', 'markdown', or 'both')", format)
+	}
+}
+
+// loadOutputFormatConfig loads output format configuration with precedence: CLI > Environment > Default
+func loadOutputFormatConfig(cfg *vikunja.OutputFormat, cliFormat *string) error {
+	// 1. CLI flag (highest priority)
+	if cliFormat != nil && *cliFormat != "" {
+		format, err := parseOutputFormat(*cliFormat)
+		if err != nil {
+			return fmt.Errorf("invalid --output-format value: %w", err)
+		}
+		*cfg = format
+		return nil
+	}
+
+	// 2. Environment variable (middle priority)
+	if format := os.Getenv("VIKUNJA_OUTPUT_FORMAT"); format != "" {
+		format, err := parseOutputFormat(format)
+		if err != nil {
+			return fmt.Errorf("invalid VIKUNJA_OUTPUT_FORMAT value: %w", err)
+		}
+		*cfg = format
+		return nil
+	}
+
+	// 3. Default (lowest priority) - already set in struct initialization
 	return nil
 }
 

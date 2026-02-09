@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -67,10 +66,54 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 	slog.SetDefault(logger)
 
+	// Get output format from CLI flag
+	var cliFormat *string
+	if format := cmd.Flag("output-format").Value.String(); format != "" {
+		cliFormat = &format
+	}
+
 	// Create configuration
-	cfg, err := createServerConfig(cmd)
+	cfg, err := config.Load(cliFormat)
 	if err != nil {
 		return fmt.Errorf("failed to create server configuration: %w", err)
+	}
+
+	// Force HTTP transport for server command
+	cfg.Transport = config.TransportHTTP
+
+	// Override server-specific settings from flags
+	if httpHost != "" {
+		cfg.HTTP.Host = httpHost
+	}
+	if httpPort > 0 {
+		cfg.HTTP.Port = httpPort
+	}
+	if sessionTimeout != "" {
+		cfg.HTTP.SessionTimeout, err = time.ParseDuration(sessionTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid session timeout: %w", err)
+		}
+	}
+	if stateless {
+		cfg.HTTP.Stateless = stateless
+	}
+	if readTimeout != "" {
+		cfg.HTTP.ReadTimeout, err = time.ParseDuration(readTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid read timeout: %w", err)
+		}
+	}
+	if writeTimeout != "" {
+		cfg.HTTP.WriteTimeout, err = time.ParseDuration(writeTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid write timeout: %w", err)
+		}
+	}
+	if idleTimeout != "" {
+		cfg.HTTP.IdleTimeout, err = time.ParseDuration(idleTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid idle timeout: %w", err)
+		}
 	}
 
 	// Validate configuration
@@ -110,7 +153,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	)
 
 	// Register Vikunja tool handlers
-	handlers.Register(s)
+	handlers.Register(s, cfg)
 
 	// Create transport server
 	transportServer, err := transport.CreateTransportServer(s, cfg)
@@ -119,91 +162,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start the server
-	return transportServer.Run(ctx)
-}
-
-func createServerConfig(cmd *cobra.Command) (*config.Config, error) {
-	cfg := &config.Config{
-		Transport: config.TransportHTTP,
-		HTTP: config.HTTPConfig{
-			Host:      httpHost,
-			Port:      httpPort,
-			Stateless: stateless,
-		},
-		Vikunja: config.VikunjaConfig{},
-	}
-
-	// Parse timeout durations
-	if sessionTimeout != "" {
-		timeout, err := time.ParseDuration(sessionTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid session timeout: %w", err)
+	err = transportServer.Run(ctx)
+	if err != nil {
+		// Only log error if it's not context cancellation (which is expected)
+		if ctx.Err() != context.Canceled {
+			logger.Error("server error", "error", err)
+			return err
 		}
-		cfg.HTTP.SessionTimeout = timeout
 	}
-
-	if readTimeout != "" {
-		timeout, err := time.ParseDuration(readTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid read timeout: %w", err)
-		}
-		cfg.HTTP.ReadTimeout = timeout
-	}
-
-	if writeTimeout != "" {
-		timeout, err := time.ParseDuration(writeTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid write timeout: %w", err)
-		}
-		cfg.HTTP.WriteTimeout = timeout
-	}
-
-	if idleTimeout != "" {
-		timeout, err := time.ParseDuration(idleTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid idle timeout: %w", err)
-		}
-		cfg.HTTP.IdleTimeout = timeout
-	}
-
-	// Override with environment variables if set
-	if host := os.Getenv("MCP_HTTP_HOST"); host != "" {
-		cfg.HTTP.Host = host
-	}
-	if port := os.Getenv("MCP_HTTP_PORT"); port != "" {
-		p, err := strconv.Atoi(port)
-		if err != nil {
-			return nil, fmt.Errorf("invalid HTTP port in environment: %w", err)
-		}
-		cfg.HTTP.Port = p
-	}
-	if timeout := os.Getenv("MCP_HTTP_SESSION_TIMEOUT"); timeout != "" {
-		d, err := time.ParseDuration(timeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid session timeout in environment: %w", err)
-		}
-		cfg.HTTP.SessionTimeout = d
-	}
-	if s := os.Getenv("MCP_HTTP_STATELESS"); s != "" {
-		stateless, err := strconv.ParseBool(s)
-		if err != nil {
-			return nil, fmt.Errorf("invalid stateless flag in environment: %w", err)
-		}
-		cfg.HTTP.Stateless = stateless
-	}
-
-	// Set Vikunja configuration from flags or environment
-	if host := cmd.Flag("vikunja-host").Value.String(); host != "" {
-		cfg.Vikunja.Host = host
-	} else if host := os.Getenv("VIKUNJA_HOST"); host != "" {
-		cfg.Vikunja.Host = host
-	}
-
-	if token := cmd.Flag("vikunja-token").Value.String(); token != "" {
-		cfg.Vikunja.Token = token
-	} else if token := os.Getenv("VIKUNJA_TOKEN"); token != "" {
-		cfg.Vikunja.Token = token
-	}
-
-	return cfg, nil
+	logger.Info("server shutdown completed")
+	return nil
 }

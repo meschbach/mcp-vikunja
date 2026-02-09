@@ -52,6 +52,12 @@ var tasksListCmd = &cobra.Command{
 			return formatter.FormatTasksAsJSON(tasks)
 		}
 
+		if markdown {
+			markdownOutput := formatter.FormatTasksAsMarkdown(tasks)
+			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			return nil
+		}
+
 		return formatter.FormatTasks(tasks)
 	},
 }
@@ -104,6 +110,12 @@ var tasksGetCmd = &cobra.Command{
 				return formatter.FormatAsJSON(taskWithBuckets)
 			}
 			return formatter.FormatTaskAsJSON(task)
+		}
+
+		if markdown {
+			markdownOutput := formatter.FormatTaskAsMarkdown(*task)
+			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			return nil
 		}
 
 		return formatter.FormatTaskWithBuckets(task, bucketInfo)

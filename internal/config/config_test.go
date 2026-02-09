@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("VIKUNJA_HOST")
 	os.Unsetenv("VIKUNJA_TOKEN")
 
-	cfg, err := Load()
+	cfg, err := Load(nil)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
@@ -35,7 +36,7 @@ func TestLoad_HTTPTransport(t *testing.T) {
 	os.Setenv("MCP_TRANSPORT", "http")
 	defer os.Unsetenv("MCP_TRANSPORT")
 
-	cfg, err := Load()
+	cfg, err := Load(nil)
 	require.NoError(t, err)
 	assert.Equal(t, TransportHTTP, cfg.Transport)
 }
@@ -44,7 +45,7 @@ func TestLoad_InvalidTransport(t *testing.T) {
 	os.Setenv("MCP_TRANSPORT", "websocket")
 	defer os.Unsetenv("MCP_TRANSPORT")
 
-	_, err := Load()
+	_, err := Load(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid transport type")
 }
@@ -67,7 +68,7 @@ func TestLoad_HTTPConfig(t *testing.T) {
 		os.Unsetenv("MCP_HTTP_IDLE_TIMEOUT")
 	}()
 
-	cfg, err := Load()
+	cfg, err := Load(nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "0.0.0.0", cfg.HTTP.Host)
@@ -87,7 +88,7 @@ func TestLoad_VikunjaConfig(t *testing.T) {
 		os.Unsetenv("VIKUNJA_TOKEN")
 	}()
 
-	cfg, err := Load()
+	cfg, err := Load(nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "https://vikunja.example.com", cfg.Vikunja.Host)
@@ -98,7 +99,7 @@ func TestLoad_InvalidHTTPPort(t *testing.T) {
 	os.Setenv("MCP_HTTP_PORT", "invalid")
 	defer os.Unsetenv("MCP_HTTP_PORT")
 
-	_, err := Load()
+	_, err := Load(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid HTTP port")
 }
@@ -107,7 +108,7 @@ func TestLoad_InvalidDuration(t *testing.T) {
 	os.Setenv("MCP_HTTP_SESSION_TIMEOUT", "invalid")
 	defer os.Unsetenv("MCP_HTTP_SESSION_TIMEOUT")
 
-	_, err := Load()
+	_, err := Load(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid session timeout")
 }
@@ -116,7 +117,7 @@ func TestLoad_InvalidBool(t *testing.T) {
 	os.Setenv("MCP_HTTP_STATELESS", "invalid")
 	defer os.Unsetenv("MCP_HTTP_STATELESS")
 
-	_, err := Load()
+	_, err := Load(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid stateless flag")
 }
@@ -267,4 +268,78 @@ func TestHTTPConfig_Address(t *testing.T) {
 			assert.Equal(t, tt.expected, cfg.Address())
 		})
 	}
+}
+
+func TestParseOutputFormat(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected vikunja.OutputFormat
+		hasError bool
+	}{
+		{"json", vikunja.OutputFormatJSON, false},
+		{"JSON", vikunja.OutputFormatJSON, false},
+		{"markdown", vikunja.OutputFormatMarkdown, false},
+		{"md", vikunja.OutputFormatMarkdown, false},
+		{"MARKDOWN", vikunja.OutputFormatMarkdown, false},
+		{"both", vikunja.OutputFormatBoth, false},
+		{"invalid", vikunja.OutputFormatJSON, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result, err := parseOutputFormat(tt.input)
+			if tt.hasError {
+				assert.Error(t, err)
+				assert.Equal(t, vikunja.OutputFormatJSON, result) // Should return default on error
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestLoad_CLIFormatPrecedence(t *testing.T) {
+	// Clear environment variables
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+
+	// Test CLI flag overrides environment
+	json := "json"
+	cfg, err := Load(&json)
+	require.NoError(t, err)
+	assert.Equal(t, vikunja.OutputFormatJSON, cfg.OutputFormat)
+
+	// Test CLI flag with value
+	markdown := "markdown"
+	cfg, err = Load(&markdown)
+	require.NoError(t, err)
+	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
+
+	// Test CLI flag with invalid value
+	invalid := "invalid"
+	cfg, err = Load(&invalid)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --output-format value")
+
+	// Clean up
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+}
+
+func TestLoad_EnvironmentVariableFallback(t *testing.T) {
+	// Clear environment variables
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+
+	// Test with no CLI flag - should use default (Markdown for AI/LLM compatibility)
+	cfg, err := Load(nil)
+	require.NoError(t, err)
+	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
+
+	// Test with environment variable - no CLI flag
+	os.Setenv("VIKUNJA_OUTPUT_FORMAT", "markdown")
+	cfg, err = Load(nil)
+	require.NoError(t, err)
+	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
+
+	// Clean up
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 }

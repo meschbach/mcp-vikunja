@@ -41,6 +41,12 @@ var projectsListCmd = &cobra.Command{
 			return formatter.FormatProjectsAsJSON(projects)
 		}
 
+		if markdown {
+			markdownOutput := formatter.FormatProjectsAsMarkdown(projects)
+			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			return nil
+		}
+
 		return formatter.FormatProjects(projects)
 	},
 }
@@ -77,6 +83,12 @@ var projectsGetCmd = &cobra.Command{
 
 		if jsonFmt {
 			return formatter.FormatProjectAsJSON(project)
+		}
+
+		if markdown {
+			markdownOutput := formatter.FormatProjectAsMarkdown(*project)
+			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			return nil
 		}
 
 		return formatter.FormatProject(project)

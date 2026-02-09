@@ -7,6 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	outputFormat string
+)
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "mcp-vikunja",
@@ -34,8 +38,41 @@ Examples:
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+		// Don't show help for expected shutdown scenarios
+		if !isExpectedShutdown(err) {
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
+}
+
+// isExpectedShutdown checks if the error represents an expected shutdown scenario
+func isExpectedShutdown(err error) bool {
+	if err == nil {
+		return true
+	}
+	// Check for context cancellation or other expected shutdown conditions
+	errStr := err.Error()
+	return contains(errStr, "context canceled") ||
+		contains(errStr, "signal") ||
+		contains(errStr, "shutdown")
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr ||
+		(len(s) > len(substr) &&
+			(s[:len(substr)] == substr ||
+				s[len(s)-len(substr):] == substr ||
+				findSubstring(s, substr))))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {
@@ -43,4 +80,5 @@ func init() {
 	rootCmd.PersistentFlags().String("vikunja-host", "", "Vikunja instance URL (env: VIKUNJA_HOST)")
 	rootCmd.PersistentFlags().String("vikunja-token", "", "Vikunja API token (env: VIKUNJA_TOKEN)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "o", "", "Output format: json (legacy), markdown (default), both (CLI overrides VIKUNJA_OUTPUT_FORMAT)")
 }

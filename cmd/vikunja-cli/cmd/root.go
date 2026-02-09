@@ -16,6 +16,7 @@ var (
 	host     string
 	token    string
 	jsonFmt  bool
+	markdown bool
 	insecure bool
 	output   string
 	verbose  bool
@@ -45,6 +46,11 @@ var rootCmd = &cobra.Command{
 		// Setup color output
 		if noColor || os.Getenv("NO_COLOR") != "" {
 			color.NoColor = true
+		}
+
+		// Validate format flags
+		if jsonFmt && markdown {
+			return fmt.Errorf("cannot specify both --json and --markdown flags")
 		}
 
 		// Validate required flags
@@ -92,6 +98,10 @@ func IsJSON() bool {
 	return jsonFmt
 }
 
+func IsMarkdown() bool {
+	return markdown
+}
+
 func GetLogger() *slog.Logger {
 	return logger
 }
@@ -105,6 +115,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&host, "host", host, "Vikunja instance hostname (or VIKUNJA_HOST env)")
 	rootCmd.PersistentFlags().StringVarP(&token, "token", "t", token, "API token for authentication (or VIKUNJA_TOKEN env)")
 	rootCmd.PersistentFlags().BoolVarP(&jsonFmt, "json", "j", false, "Output as JSON")
+	rootCmd.PersistentFlags().BoolVarP(&markdown, "markdown", "m", false, "Output as Markdown")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "k", false, "Skip TLS certificate verification")
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "Write output to file instead of stdout")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging to stderr")

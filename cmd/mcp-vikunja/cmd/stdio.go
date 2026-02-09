@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/meschbach/mcp-vikunja/internal/config"
 	"github.com/meschbach/mcp-vikunja/internal/handlers"
@@ -47,8 +46,14 @@ func runStdio(cmd *cobra.Command, args []string) error {
 	}
 	slog.SetDefault(logger)
 
+	// Get output format from CLI flag
+	var cliFormat *string
+	if format := cmd.Flag("output-format").Value.String(); format != "" {
+		cliFormat = &format
+	}
+
 	// Create configuration
-	cfg, err := createStdioConfig(cmd)
+	cfg, err := config.Load(cliFormat)
 	if err != nil {
 		return fmt.Errorf("failed to create stdio configuration: %w", err)
 	}
@@ -87,7 +92,7 @@ func runStdio(cmd *cobra.Command, args []string) error {
 	)
 
 	// Register Vikunja tool handlers
-	handlers.Register(s)
+	handlers.Register(s, cfg)
 
 	// Create transport server
 	transportServer, err := transport.CreateTransportServer(s, cfg)
@@ -97,35 +102,4 @@ func runStdio(cmd *cobra.Command, args []string) error {
 
 	// Start the server
 	return transportServer.Run(ctx)
-}
-
-func createStdioConfig(cmd *cobra.Command) (*config.Config, error) {
-	cfg := &config.Config{
-		Transport: config.TransportStdio,
-		HTTP: config.HTTPConfig{
-			Host:           "localhost",
-			Port:           8080,
-			SessionTimeout: 30 * time.Minute,
-			Stateless:      false,
-			ReadTimeout:    30 * time.Second,
-			WriteTimeout:   30 * time.Second,
-			IdleTimeout:    120 * time.Second,
-		},
-		Vikunja: config.VikunjaConfig{},
-	}
-
-	// Set Vikunja configuration from flags or environment
-	if host := cmd.Flag("vikunja-host").Value.String(); host != "" {
-		cfg.Vikunja.Host = host
-	} else if host := os.Getenv("VIKUNJA_HOST"); host != "" {
-		cfg.Vikunja.Host = host
-	}
-
-	if token := cmd.Flag("vikunja-token").Value.String(); token != "" {
-		cfg.Vikunja.Token = token
-	} else if token := os.Getenv("VIKUNJA_TOKEN"); token != "" {
-		cfg.Vikunja.Token = token
-	}
-
-	return cfg, nil
 }

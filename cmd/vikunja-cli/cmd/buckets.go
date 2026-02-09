@@ -46,6 +46,15 @@ var bucketsListCmd = &cobra.Command{
 				return formatter.FormatAsJSON(views)
 			}
 
+			if markdown {
+				markdownOutput := formatter.FormatViewAsMarkdown(views[0]) // Format first view
+				for i := 1; i < len(views); i++ {
+					markdownOutput += "\n---\n\n" + formatter.FormatViewAsMarkdown(views[i])
+				}
+				fmt.Fprintf(outputWriter, "%s", markdownOutput)
+				return nil
+			}
+
 			return formatter.FormatProjectViews(views)
 		}
 
@@ -62,6 +71,12 @@ var bucketsListCmd = &cobra.Command{
 
 		if jsonFmt {
 			return formatter.FormatAsJSON(buckets)
+		}
+
+		if markdown {
+			markdownOutput := formatter.FormatBucketsAsMarkdown(buckets)
+			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			return nil
 		}
 
 		return formatter.FormatBuckets(buckets)
@@ -146,6 +161,12 @@ var bucketsTasksCmd = &cobra.Command{
 
 		if jsonFmt {
 			return formatter.FormatAsJSON(vt)
+		}
+
+		if markdown {
+			markdownOutput := formatter.FormatViewTasksAsMarkdown(vt)
+			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			return nil
 		}
 
 		return formatter.FormatViewTasks(vt)

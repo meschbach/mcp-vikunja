@@ -3,15 +3,19 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/meschbach/mcp-vikunja/internal/config"
 	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Global output formatter
+var outputFormatter vikunja.OutputFormatter
 
 type ListTasksInput struct {
 	ProjectID    string `json:"project_id,omitempty" jsonschema:"Optional project ID to filter tasks"`
@@ -43,12 +47,12 @@ type BucketTasksSummary struct {
 type ViewTasksSummary struct {
 	ViewID    int64                `json:"view_id"`
 	ViewTitle string               `json:"view_title"`
-	Buckets   []BucketTasksSummary `json:"buckets,omitempty"`
+	Buckets   []BucketTasksSummary `json:"buckets,omitempty" jsonschema:"Buckets the tasks are organized into"`
 }
 
 type ListTasksOutput struct {
-	Project *Project         `json:"project,omitempty"`
-	View    ViewTasksSummary `json:"view"`
+	Project *Project         `json:"project,omitempty" jsonschema:"Project hte tasks are related to"`
+	View    ViewTasksSummary `json:"view" jsonschema:"tasks associated with this view"`
 }
 
 type GetTaskInput struct {
@@ -313,15 +317,28 @@ func toBucketSummary(b vikunja.Bucket) BucketSummary {
 }
 
 func toTask(t vikunja.Task) Task {
+	dueDate := ""
+	if !t.DueDate.IsZero() {
+		dueDate = t.DueDate.Format(time.RFC3339)
+	}
+	created := ""
+	if !t.Created.IsZero() {
+		created = t.Created.Format(time.RFC3339)
+	}
+	updated := ""
+	if !t.Updated.IsZero() {
+		updated = t.Updated.Format(time.RFC3339)
+	}
+
 	return Task{
 		ID:          t.ID,
 		Title:       t.Title,
 		Description: t.Description,
 		ProjectID:   t.ProjectID,
 		Done:        t.Done,
-		DueDate:     t.DueDate.String(),
-		Created:     t.Created.String(),
-		Updated:     t.Updated.String(),
+		DueDate:     dueDate,
+		Created:     created,
+		Updated:     updated,
 		Buckets:     toBuckets(t.Buckets),
 		Position:    t.Position,
 	}
@@ -384,6 +401,59 @@ func toViews(views []vikunja.ProjectView) []View {
 		res[i] = toView(v)
 	}
 	return res
+}
+
+func toVikunjaTask(t TaskSummary) vikunja.Task {
+	return vikunja.Task{
+		ID:    t.ID,
+		Title: t.Title,
+		// Populate other fields with default/zero values as they are not available in TaskSummary
+		Description: "",
+		ProjectID:   0,
+		Done:        false,
+		DueDate:     time.Time{},
+		Created:     time.Time{},
+		Updated:     time.Time{},
+		Buckets:     nil,
+		Position:    0,
+	}
+}
+
+func toVikunjaBucket(b BucketSummary) vikunja.Bucket {
+	return vikunja.Bucket{
+		ID:    b.ID,
+		Title: b.Title,
+		// Populate other fields with default/zero values
+		ProjectViewID: 0,
+		Description:   "",
+		Limit:         0,
+		Position:      0,
+		IsDoneBucket:  false,
+		Tasks:         nil,
+	}
+}
+
+func toVikunjaBucketTasks(bts BucketTasksSummary) vikunja.BucketTasks {
+	vikunjaTasks := make([]vikunja.Task, len(bts.Tasks))
+	for i, taskSummary := range bts.Tasks {
+		vikunjaTasks[i] = toVikunjaTask(taskSummary)
+	}
+	return vikunja.BucketTasks{
+		Bucket: toVikunjaBucket(bts.Bucket),
+		Tasks:  vikunjaTasks,
+	}
+}
+
+func toVikunjaViewTasks(vts ViewTasksSummary) *vikunja.ViewTasks {
+	vikunjaBuckets := make([]vikunja.BucketTasks, len(vts.Buckets))
+	for i, bucketTaskSummary := range vts.Buckets {
+		vikunjaBuckets[i] = toVikunjaBucketTasks(bucketTaskSummary)
+	}
+	return &vikunja.ViewTasks{
+		ViewID:    vts.ViewID,
+		ViewTitle: vts.ViewTitle,
+		Buckets:   vikunjaBuckets,
+	}
 }
 
 // createVikunjaClient creates a new Vikunja client using environment variables
@@ -689,9 +759,9 @@ func discoverVikunjaHandler(ctx context.Context, _ *mcp.CallToolRequest, input D
 		ServerInfo:      serverInfo,
 	}
 
-	data, err := json.MarshalIndent(output, "", "  ")
+	data, err := outputFormatter.Format(output)
 	if err != nil {
-		return nil, DiscoverOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, DiscoverOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -707,7 +777,9 @@ func stringPtr(s string) *string {
 }
 
 // Register adds all Vikunja tool handlers to the MCP server.
-func Register(s *mcp.Server) {
+func Register(s *mcp.Server, cfg *config.Config) {
+	// Initialize the output formatter based on configuration
+	outputFormatter = vikunja.GetFormatter(cfg.OutputFormat)
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "discover_vikunja",
 		Description: "Discover all available Vikunja resources with AI-friendly guidance",
@@ -883,11 +955,33 @@ func listTasksHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListTas
 		})
 	}
 
-	data, err := json.Marshal(vt)
+	// Convert handlers.ViewTasksSummary to vikunja.ViewTasksSummary for formatting
+	vikunjaVT := vikunja.ViewTasksSummary{
+		ViewID:    vt.ViewID,
+		ViewTitle: vt.ViewTitle,
+		Buckets:   make([]vikunja.BucketTasksSummary, len(vt.Buckets)),
+	}
+	for i, bucket := range vt.Buckets {
+		vikunjaVT.Buckets[i] = vikunja.BucketTasksSummary{
+			Bucket: vikunja.BucketSummary{
+				ID:    bucket.Bucket.ID,
+				Title: bucket.Bucket.Title,
+			},
+			Tasks: make([]vikunja.TaskSummary, len(bucket.Tasks)),
+		}
+		for j, task := range bucket.Tasks {
+			vikunjaVT.Buckets[i].Tasks[j] = vikunja.TaskSummary{
+				ID:    task.ID,
+				Title: task.Title,
+			}
+		}
+	}
+
+	data, err := outputFormatter.Format(vikunjaVT)
 	if err != nil {
 		return &mcp.CallToolResult{
 			IsError: true,
-		}, ListTasksOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		}, ListTasksOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -966,9 +1060,26 @@ func getTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, input GetTaskIn
 		output.Buckets = bucketInfo
 	}
 
-	data, err := json.MarshalIndent(output, "", "  ")
+	// Convert handlers.GetTaskOutput to vikunja.TaskOutput for formatting
+	vikunjaOutput := vikunja.TaskOutput{
+		Task: vikunja.Task{
+			ID:          output.Task.ID,
+			Title:       output.Task.Title,
+			Description: output.Task.Description,
+			ProjectID:   output.Task.ProjectID,
+			Done:        output.Task.Done,
+			DueDate:     parseTime(output.Task.DueDate),
+			Created:     parseTime(output.Task.Created),
+			Updated:     parseTime(output.Task.Updated),
+			Buckets:     toVikunjaBuckets(output.Task.Buckets),
+			Position:    output.Task.Position,
+		},
+		Buckets: output.Buckets,
+	}
+
+	data, err := outputFormatter.Format(vikunjaOutput)
 	if err != nil {
-		return nil, GetTaskOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, GetTaskOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -1005,9 +1116,9 @@ func listBucketsHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListB
 		return nil, ListBucketsOutput{}, fmt.Errorf("failed to get buckets: %w", err)
 	}
 
-	data, err := json.MarshalIndent(buckets, "", "  ")
+	data, err := outputFormatter.Format(buckets)
 	if err != nil {
-		return nil, ListBucketsOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, ListBucketsOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -1046,9 +1157,9 @@ func listProjectsHandler(ctx context.Context, _ *mcp.CallToolRequest, _ ListProj
 		}
 	}
 
-	data, err := json.MarshalIndent(output.Projects, "", "  ")
+	data, err := outputFormatter.Format(output.Projects)
 	if err != nil {
-		return nil, ListProjectsOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, ListProjectsOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -1098,9 +1209,9 @@ func findProjectByNameHandler(ctx context.Context, _ *mcp.CallToolRequest, input
 		}, FindProjectByNameOutput{}, fmt.Errorf("project with title %q not found", input.Name)
 	}
 
-	data, err := json.MarshalIndent(project, "", "  ")
+	data, err := outputFormatter.Format(project)
 	if err != nil {
-		return nil, FindProjectByNameOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, FindProjectByNameOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -1142,9 +1253,28 @@ func findViewHandler(ctx context.Context, _ *mcp.CallToolRequest, input FindView
 		View:    toView(*foundView),
 	}
 
-	data, err := json.MarshalIndent(output, "", "  ")
+	// Convert handlers.FindViewOutput to vikunja.ViewOutput for formatting
+	vikunjaOutput := vikunja.ViewOutput{
+		Project: vikunja.Project{
+			ID:    output.Project.ID,
+			Title: output.Project.Title,
+			// Note: handlers.Project has limited fields compared to vikunja.Project
+		},
+		View: vikunja.ProjectView{
+			ID:                      output.View.ID,
+			ProjectID:               output.View.ProjectID,
+			Title:                   output.View.Title,
+			ViewKind:                output.View.ViewKind,
+			Position:                output.View.Position,
+			BucketConfigurationMode: output.View.BucketConfigurationMode,
+			DefaultBucketID:         output.View.DefaultBucketID,
+			DoneBucketID:            output.View.DoneBucketID,
+		},
+	}
+
+	data, err := outputFormatter.Format(vikunjaOutput)
 	if err != nil {
-		return nil, FindViewOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, FindViewOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -1191,9 +1321,19 @@ func listViewsHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListVie
 		Views:   toViews(filteredViews),
 	}
 
-	data, err := json.MarshalIndent(output, "", "  ")
+	// Convert handlers.ListViewsOutput to vikunja.ViewsOutput for formatting
+	vikunjaOutput := vikunja.ViewsOutput{
+		Project: vikunja.Project{
+			ID:    output.Project.ID,
+			Title: output.Project.Title,
+			// Note: handlers.Project has limited fields
+		},
+		Views: filteredViews, // Already in vikunja format
+	}
+
+	data, err := outputFormatter.Format(vikunjaOutput)
 	if err != nil {
-		return nil, ListViewsOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, ListViewsOutput{}, fmt.Errorf("failed to format response: %w", err)
 	}
 
 	return &mcp.CallToolResult{
@@ -1229,6 +1369,39 @@ func enhancedViewNotFoundError(viewName string, projectName string, availableVie
 		}
 	}
 	return fmt.Errorf("view with title %q not found in project %q.%s Try: list_views() to see project views", viewName, projectName, suggestion)
+}
+
+// parseTime parses a time string or returns zero time
+func parseTime(timeStr string) time.Time {
+	if timeStr == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+// toVikunjaBuckets converts handlers.Bucket to vikunja.Bucket
+func toVikunjaBuckets(buckets []Bucket) []vikunja.Bucket {
+	if buckets == nil {
+		return nil
+	}
+	result := make([]vikunja.Bucket, len(buckets))
+	for i, b := range buckets {
+		result[i] = vikunja.Bucket{
+			ID:            b.ID,
+			ProjectViewID: b.ProjectViewID,
+			Title:         b.Title,
+			Description:   b.Description,
+			Limit:         b.Limit,
+			Position:      b.Position,
+			IsDoneBucket:  b.IsDoneBucket,
+			// Note: Tasks field is not included as it's not part of handlers.Bucket
+		}
+	}
+	return result
 }
 
 func containsIgnoreCase(s, substr string) bool {
