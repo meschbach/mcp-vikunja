@@ -26,6 +26,7 @@ type Config struct {
 	HTTP         HTTPConfig           `json:"http"`
 	Vikunja      VikunjaConfig        `json:"vikunja"`
 	OutputFormat vikunja.OutputFormat `json:"output_format"`
+	Readonly     bool                 `json:"readonly"`
 }
 
 // HTTPConfig contains HTTP server specific configuration.
@@ -47,7 +48,7 @@ type VikunjaConfig struct {
 }
 
 // Load loads configuration from environment variables with sensible defaults.
-func Load(cliFormat *string) (*Config, error) {
+func Load(cliFormat *string, cliReadonly *bool) (*Config, error) {
 	cfg := &Config{
 		Transport: TransportStdio, // Default to stdio for backward compatibility
 		HTTP: HTTPConfig{
@@ -87,6 +88,11 @@ func Load(cliFormat *string) (*Config, error) {
 	// Load output format configuration
 	if err := loadOutputFormatConfig(&cfg.OutputFormat, cliFormat); err != nil {
 		return nil, fmt.Errorf("failed to load output format config: %w", err)
+	}
+
+	// Load readonly configuration
+	if err := loadReadonlyConfig(&cfg.Readonly, cliReadonly); err != nil {
+		return nil, fmt.Errorf("failed to load readonly config: %w", err)
 	}
 
 	return cfg, nil
@@ -182,6 +188,29 @@ func parseOutputFormat(format string) (vikunja.OutputFormat, error) {
 	default:
 		return vikunja.OutputFormatJSON, fmt.Errorf("invalid output format: %s (must be 'json', 'markdown', or 'both')", format)
 	}
+}
+
+// loadReadonlyConfig loads readonly configuration from environment variable with CLI precedence
+func loadReadonlyConfig(cfg *bool, cliReadonly *bool) error {
+	// Default to false (write operations enabled)
+	*cfg = false
+
+	// CLI flag takes precedence
+	if cliReadonly != nil {
+		*cfg = *cliReadonly
+		return nil
+	}
+
+	// Environment variable
+	if readonly := os.Getenv("MCP_READONLY"); readonly != "" {
+		s, err := strconv.ParseBool(readonly)
+		if err != nil {
+			return fmt.Errorf("invalid MCP_READONLY flag: %s", readonly)
+		}
+		*cfg = s
+	}
+
+	return nil
 }
 
 // loadOutputFormatConfig loads output format configuration with precedence: CLI > Environment > Default

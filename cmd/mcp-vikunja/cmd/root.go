@@ -9,6 +9,7 @@ import (
 
 var (
 	outputFormat string
+	readonly     bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -81,4 +82,5 @@ func init() {
 	rootCmd.PersistentFlags().String("vikunja-token", "", "Vikunja API token (env: VIKUNJA_TOKEN)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "o", "", "Output format: json (legacy), markdown (default), both (CLI overrides VIKUNJA_OUTPUT_FORMAT)")
+	rootCmd.PersistentFlags().BoolVar(&readonly, "readonly", false, "Enable readonly mode to prevent write operations (env: MCP_READONLY)")
 }

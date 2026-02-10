@@ -76,6 +76,19 @@ import (
 - One blank line between functions
 - No blank line before closing brace
 
+### File Size Limits
+- **Preferred maximum**: 200 lines per file
+- **Absolute maximum**: 400 lines per file  
+- **Exception**: Generated code (protobuf, etc.)
+- **Enforcement**: Split files when exceeding limits
+- **Rationale**: Improves maintainability, reduces cognitive load, encourages focused responsibilities
+
+### Function Size Limits
+- **Preferred maximum**: 50 lines per function
+- **Absolute maximum**: 100 lines per function
+- **Cyclomatic complexity**: Maximum 10
+- **Enforcement**: `gocyclo` linter and code review
+
 ### Naming Conventions
 - **Packages**: Short, lowercase, no underscores (e.g., `vikunja`, `handlers`)
 - **Exported identifiers**: PascalCase (e.g., `NewServer`, `TaskHandler`)
@@ -104,10 +117,22 @@ if err != nil {
 ```
 
 ### Logging
-- Use structured logging via `log/slog` (Go 1.21+)
+- **Required**: Use structured logging via `log/slog` (Go 1.21+)
 - Include relevant context in log messages
 - Use appropriate log levels: Debug, Info, Warn, Error
 - Never log sensitive information
+- **Forbidden**: Do not use `fmt.Printf` for logging
+
+```go
+// Good - structured logging
+logger.Warn("failed to get project views",
+    slog.Int("task_id", taskID),
+    slog.Any("error", err),
+)
+
+// Bad - forbidden pattern
+fmt.Printf("Warning: failed to get project views for task %d: %v\n", taskID, err)
+```
 
 ### MCP Patterns
 - Each tool should have a dedicated handler function
@@ -121,6 +146,8 @@ if err != nil {
 - Test file naming: `*_test.go`
 - Mock external dependencies using interfaces
 - Keep tests in same package (use `package foo_test` for black-box)
+- **Benchmark tests**: `*_benchmark_test.go` for performance-critical code
+- **Integration tests**: Use build tag `//go:build integration`
 
 ```go
 func TestHandler(t *testing.T) {
@@ -188,11 +215,15 @@ func TestHandler(t *testing.T) {
 Create `.golangci.yml`:
 ```yaml
 run:
-  timeout: 5m
+  timeout: 10m
   tests: true
+  skip-dirs:
+    - vendor
 
 linters:
+  disable-all: true
   enable:
+    # Core
     - errcheck
     - gosimple
     - govet
@@ -201,6 +232,59 @@ linters:
     - unused
     - gofmt
     - goimports
+    
+    # Security
+    - gosec
+    
+    # Code quality
+    - gocritic
+    - gocyclo
+    - dupl
+    - misspell
+    - dogsled
+    - makezero
+    - prealloc
+    
+    # Testing
+    - paralleltest
+    - tenv
+    - testifylint
+    
+    # Modern practices
+    - exhaustivestruct
+    - forbidigo
+
+linters-settings:
+  gocyclo:
+    min-complexity: 10
+  
+  gosec:
+    excludes:
+      - G204  # Subprocess launching may be allowed in this context
+  
+  dupl:
+    threshold: 100
+  
+  misspell:
+    locale: US
+  
+  forbidigo:
+    forbid:
+      - 'fmt\.Print.*'  # Use structured logging instead
+  
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport  # https://github.com/go-critic/go-critic/issues/845
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
 ```
 
 ## Code Quality Standards
@@ -225,6 +309,99 @@ type Task struct {
     ID          int       `json:"id"`
     Title       string    `json:"title"`
     Description string    `json:"description,omitempty"`
+}
+```
+
+## Performance Standards
+
+### Memory Management
+- Pre-allocate slices when size is known: `make([]Type, 0, capacity)`
+- Use object pools for frequently allocated structs
+- Avoid allocations in hot paths
+- Use `strings.Builder` for string concatenation in loops
+
+### Concurrency Patterns
+```go
+// Good: Proper context cancellation
+func (c *Client) GetTasks(ctx context.Context) ([]Task, error) {
+    ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+    defer cancel()
+    // Use context for request
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    // ...
+}
+
+// Good: Goroutine lifecycle management
+func processTasks(tasks []Task) <-chan Result {
+    results := make(chan Result, len(tasks))
+    var wg sync.WaitGroup
+    
+    for _, task := range tasks {
+        wg.Add(1)
+        go func(t Task) {
+            defer wg.Done()
+            // Process task
+        }(task)  // Pass by value to avoid race conditions
+    }
+    
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+    
+    return results
+}
+```
+
+### Resource Management
+- Set HTTP client timeouts: `&http.Client{Timeout: 30*time.Second}`
+- Use `defer` for cleanup consistently
+- Implement connection pooling for HTTP clients
+- Always close idle connections: `defer client.CloseIdleConnections()`
+
+## Modern Go Practices (Go 1.21+)
+
+### Error Handling
+```go
+// Use errors.Is and errors.As for error inspection
+if errors.Is(err, context.Canceled) {
+    // Handle cancellation
+}
+
+var apiErr *APIError
+if errors.As(err, &apiErr) {
+    // Handle specific API error
+}
+```
+
+### Structured Logging
+```go
+import "log/slog"
+
+// Use structured logging
+logger := slog.With("component", "vikunja-client", "operation", "get-tasks")
+
+logger.Info("fetching tasks", 
+    "project_id", projectID,
+    "view_id", viewID,
+)
+
+logger.Error("failed to fetch tasks", 
+    "error", err,
+    "project_id", projectID,
+)
+```
+
+### Generic Types (Go 1.18+)
+```go
+// Use generics where appropriate
+type Result[T any] struct {
+    Data  T
+    Error error
+}
+
+func Fetch[T any](ctx context.Context, endpoint string) (Result[T], error) {
+    // Generic implementation
 }
 ```
 
@@ -261,6 +438,56 @@ var globalClient *vikunja.Client
 - Keep interfaces small and focused
 - Define interfaces where you use them (consumer-side)
 
+### Enhanced Dependency Injection
+```go
+// Define interfaces at point of use
+type TaskLister interface {
+    ListTasks(ctx context.Context, projectID int64) ([]vikunja.Task, error)
+}
+
+type TaskPresenter interface {
+    FormatTasks(tasks []vikunja.Task) (string, error)
+}
+
+// Handler depends on abstractions
+type TaskHandler struct {
+    lister    TaskLister
+    presenter TaskPresenter
+    logger    *slog.Logger
+}
+
+func NewTaskHandler(
+    lister TaskLister,
+    presenter TaskPresenter,
+    logger *slog.Logger,
+) *TaskHandler {
+    return &TaskHandler{
+        lister:    lister,
+        presenter: presenter,
+        logger:    logger,
+    }
+}
+```
+
+### File Organization
+```
+internal/
+├── handlers/
+│   ├── tasks.go          # Task-related MCP tools
+│   ├── projects.go       # Project-related MCP tools
+│   ├── views.go          # View-related MCP tools
+│   ├── discovery.go      # Tool discovery handlers
+│   ├── handlers.go       # Common handler utilities
+│   └── handlers_test.go  # Shared test utilities
+├── transport/
+│   ├── server.go         # MCP server implementation
+│   ├── middleware.go     # HTTP middleware
+│   └── server_test.go
+└── config/
+    ├── config.go         # Configuration management
+    └── config_test.go
+```
+
 ## Testing Standards
 
 ### Test Organization
@@ -269,10 +496,24 @@ var globalClient *vikunja.Client
 - Subtests with descriptive names via `t.Run()`
 
 ### Test Coverage
-- **Minimum 70% coverage** for production code
+- **Minimum 80% coverage** for production code (increased from 70%)
 - **Exclude** `cmd/` and `main` packages from coverage requirements
 - Mock external dependencies using interfaces
 - Integration tests use build tag: `//go:build integration`
+- **Benchmark tests**: Required for all performance-critical paths
+
+### Benchmark Testing
+```go
+func BenchmarkClient_GetTasks(b *testing.B) {
+    client := setupTestClient()
+    ctx := context.Background()
+    
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _, _ = client.GetTasks(ctx)
+    }
+}
+```
 
 ### Example Test Structure
 ```go
@@ -347,6 +588,9 @@ go build ./...
 # 6. Tidy dependencies
 go mod tidy
 go mod verify
+
+# 7. Run benchmarks (performance-critical changes)
+go test -bench=. ./...
 ```
 
 ### Git Hooks
@@ -366,8 +610,11 @@ pre-commit:
 ### CI Pipeline
 Required checks for pull requests:
 1. `go fmt` verification (no formatting changes needed)
-2. `golangci-lint` passes
+2. `golangci-lint` passes (including new enhanced rules)
 3. `go test ./...` passes
-4. Coverage report meets minimum threshold
+4. Coverage report meets minimum threshold (80%)
 5. `go build ./...` succeeds
 6. `go mod tidy` produces no changes
+7. All files under 400 lines (automated check)
+8. Zero global variables (automated check)
+9. Benchmark tests pass for performance-critical paths

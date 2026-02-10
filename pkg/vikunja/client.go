@@ -1,6 +1,7 @@
 package vikunja
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -351,6 +352,43 @@ func (c *Client) GetTaskBuckets(ctx context.Context, taskID int64) (*TaskBucketI
 		TaskID: taskID,
 		Views:  taskViews,
 	}, nil
+}
+
+// MoveTaskToBucket moves a task to a different bucket within a project view
+func (c *Client) MoveTaskToBucket(ctx context.Context, projectID, viewID, bucketID, taskID int64) (*TaskBucket, error) {
+	url := fmt.Sprintf("%s/projects/%d/views/%d/buckets/%d/tasks", c.baseURL, projectID, viewID, bucketID)
+
+	// Create request body with task_id
+	reqBody := map[string]int64{"task_id": taskID}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to move task: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.handleErrorResponse(resp)
+	}
+
+	var taskBucket TaskBucket
+	if err := json.NewDecoder(resp.Body).Decode(&taskBucket); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &taskBucket, nil
 }
 
 // handleErrorResponse processes error responses from the API

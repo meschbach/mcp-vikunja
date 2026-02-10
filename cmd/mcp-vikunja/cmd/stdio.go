@@ -52,8 +52,11 @@ func runStdio(cmd *cobra.Command, args []string) error {
 		cliFormat = &format
 	}
 
+	// Get readonly flag value
+	cliReadonly := &readonly
+
 	// Create configuration
-	cfg, err := config.Load(cliFormat)
+	cfg, err := config.Load(cliFormat, cliReadonly)
 	if err != nil {
 		return fmt.Errorf("failed to create stdio configuration: %w", err)
 	}

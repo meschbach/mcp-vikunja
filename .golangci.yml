@@ -1,14 +1,59 @@
+version: 2
+
 run:
-  timeout: 5m
+  timeout: 10m
   tests: true
+  skip-dirs:
+    - vendor
 
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
+    - gosec
+    - gocritic
+    - gocyclo
+    - dupl
+    - misspell
+    - dogsled
+    - makezero
+    - prealloc
+    - paralleltest
+    - testifylint
+    - exhaustive
+    - forbidigo
+
+formatters:
+  enable:
     - gofmt
     - goimports
+
+linters-settings:
+  gocyclo:
+    min-complexity: 10
+  gosec:
+    excludes:
+      - G204
+  dupl:
+    threshold: 100
+  misspell:
+    locale: US
+  forbidigo:
+    forbid:
+      - 'fmt\.Print.*'
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc

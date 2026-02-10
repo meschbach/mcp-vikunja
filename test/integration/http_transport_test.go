@@ -37,7 +37,7 @@ func TestHTTPTransport_Integration(t *testing.T) {
 	}()
 
 	// Load configuration
-	cfg, err := config.Load()
+	cfg, err := config.Load(nil, nil)
 	require.NoError(t, err)
 	err = cfg.Validate()
 	require.NoError(t, err)
