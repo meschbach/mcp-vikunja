@@ -215,7 +215,7 @@ func enhancedProjectNotFoundError(title string, availableProjects []string) erro
 				availableProjects[0], availableProjects[1], len(availableProjects)-2)
 		}
 	}
-	return fmt.Errorf("project with title %q not found.%s Try: discover_vikunja() to see all options", title, suggestion)
+	return fmt.Errorf("project with title %q not found.%s Try: list_projects() to see all available projects", title, suggestion)
 }
 
 // enhancedViewNotFoundError provides contextual error message with available options

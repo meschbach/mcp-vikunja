@@ -12,10 +12,11 @@ import (
 )
 
 func TestMoveTaskToBucketHandler_ReadOnlyMode(t *testing.T) {
-	// Setup readonly config directly
-	globalConfig = &config.Config{Readonly: true}
+	// Setup readonly config
+	cfg := &config.Config{Readonly: true}
+	deps := &HandlerDependencies{Config: cfg}
+	handlers := NewHandlers(deps)
 
-	handler := moveTaskToBucketHandler
 	input := MoveTaskToBucketInput{
 		TaskID:    "123",
 		ProjectID: "1",
@@ -23,7 +24,7 @@ func TestMoveTaskToBucketHandler_ReadOnlyMode(t *testing.T) {
 		BucketID:  "3",
 	}
 
-	result, output, err := handler(context.Background(), &mcp.CallToolRequest{}, input)
+	result, output, err := handlers.moveTaskToBucketHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
 	// Should return error in readonly mode
 	require.Error(t, err)
@@ -42,10 +43,11 @@ func TestMoveTaskToBucketHandler_InvalidTaskID(t *testing.T) {
 		os.Unsetenv("VIKUNJA_TOKEN")
 	}()
 
-	// Setup non-readonly config directly
-	globalConfig = &config.Config{Readonly: false}
+	// Setup non-readonly config
+	cfg := &config.Config{Readonly: false}
+	deps := &HandlerDependencies{Config: cfg}
+	handlers := NewHandlers(deps)
 
-	handler := moveTaskToBucketHandler
 	input := MoveTaskToBucketInput{
 		TaskID:    "invalid",
 		ProjectID: "1",
@@ -53,7 +55,7 @@ func TestMoveTaskToBucketHandler_InvalidTaskID(t *testing.T) {
 		BucketID:  "3",
 	}
 
-	result, output, err := handler(context.Background(), &mcp.CallToolRequest{}, input)
+	result, output, err := handlers.moveTaskToBucketHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
 	// Should return error for invalid task ID during validation
 	require.Error(t, err)
@@ -71,14 +73,19 @@ func TestMoveTaskToBucketHandler_InvalidTaskID(t *testing.T) {
 
 func TestIsReadonly(t *testing.T) {
 	// Test with nil config
-	globalConfig = nil
-	assert.False(t, isReadonly(), "Should return false when globalConfig is nil")
+	deps := &HandlerDependencies{Config: nil}
+	handlers := NewHandlers(deps)
+	assert.False(t, handlers.isReadonly(), "Should return false when config is nil")
 
 	// Test with readonly config
-	globalConfig = &config.Config{Readonly: true}
-	assert.True(t, isReadonly(), "Should return true when config is readonly")
+	cfg := &config.Config{Readonly: true}
+	deps = &HandlerDependencies{Config: cfg}
+	handlers = NewHandlers(deps)
+	assert.True(t, handlers.isReadonly(), "Should return true when config is readonly")
 
 	// Test with non-readonly config
-	globalConfig = &config.Config{Readonly: false}
-	assert.False(t, isReadonly(), "Should return false when config is not readonly")
+	cfg = &config.Config{Readonly: false}
+	deps = &HandlerDependencies{Config: cfg}
+	handlers = NewHandlers(deps)
+	assert.False(t, handlers.isReadonly(), "Should return false when config is not readonly")
 }

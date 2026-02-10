@@ -45,11 +45,6 @@ func Register(s *mcp.Server, cfg *config.Config) {
 	handlers := NewHandlers(deps)
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "discover_vikunja",
-		Description: "Discover all available Vikunja resources with AI-friendly guidance",
-	}, handlers.discoverVikunjaHandler)
-
-	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_tasks",
 		Description: "List tasks from Vikunja filtering by criteria",
 	}, handlers.listTasksHandler)
@@ -93,4 +88,12 @@ func Register(s *mcp.Server, cfg *config.Config) {
 		Name:        "move_task_to_bucket",
 		Description: "Move a task to a different bucket within a project view",
 	}, handlers.moveTaskToBucketHandler)
+}
+
+// isReadonly returns true if server is in readonly mode
+func (h *Handlers) isReadonly() bool {
+	if h.deps.Config != nil {
+		return h.deps.Config.Readonly
+	}
+	return false
 }
