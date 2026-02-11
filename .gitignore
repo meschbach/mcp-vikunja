@@ -1,5 +1,5 @@
 .idea
 bin/
-mcp-vikunja
-vikunja-cli
+/mcp-vikunja
+/vikunja-cli
 release/
