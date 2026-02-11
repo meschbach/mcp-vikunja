@@ -78,27 +78,29 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 
 func showConfigTable(cfg *config.Config) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	defer w.Flush()
+	defer func() {
+		_ = w.Flush()
+	}()
 
-	fmt.Fprintln(w, "SETTING\tVALUE")
-	fmt.Fprintln(w, "-------\t-----")
+	_, _ = fmt.Fprintln(w, "SETTING\tVALUE")
+	_, _ = fmt.Fprintln(w, "-------\t-----")
 
 	// Transport settings
-	fmt.Fprintf(w, "Transport\t%s\n", cfg.Transport)
+	_, _ = fmt.Fprintf(w, "Transport\t%s\n", cfg.Transport)
 
 	// Vikunja settings
-	fmt.Fprintf(w, "Vikunja Host\t%s\n", maskSensitive(cfg.Vikunja.Host))
-	fmt.Fprintf(w, "Vikunja Token\t%s\n", maskSensitive(cfg.Vikunja.Token))
+	_, _ = fmt.Fprintf(w, "Vikunja Host\t%s\n", maskSensitive(cfg.Vikunja.Host))
+	_, _ = fmt.Fprintf(w, "Vikunja Token\t%s\n", maskSensitive(cfg.Vikunja.Token))
 
 	// HTTP settings (only if HTTP transport)
 	if cfg.Transport == config.TransportHTTP {
-		fmt.Fprintf(w, "HTTP Host\t%s\n", cfg.HTTP.Host)
-		fmt.Fprintf(w, "HTTP Port\t%d\n", cfg.HTTP.Port)
-		fmt.Fprintf(w, "Session Timeout\t%s\n", cfg.HTTP.SessionTimeout)
-		fmt.Fprintf(w, "Stateless\t%t\n", cfg.HTTP.Stateless)
-		fmt.Fprintf(w, "Read Timeout\t%s\n", cfg.HTTP.ReadTimeout)
-		fmt.Fprintf(w, "Write Timeout\t%s\n", cfg.HTTP.WriteTimeout)
-		fmt.Fprintf(w, "Idle Timeout\t%s\n", cfg.HTTP.IdleTimeout)
+		_, _ = fmt.Fprintf(w, "HTTP Host\t%s\n", cfg.HTTP.Host)
+		_, _ = fmt.Fprintf(w, "HTTP Port\t%d\n", cfg.HTTP.Port)
+		_, _ = fmt.Fprintf(w, "Session Timeout\t%s\n", cfg.HTTP.SessionTimeout)
+		_, _ = fmt.Fprintf(w, "Stateless\t%t\n", cfg.HTTP.Stateless)
+		_, _ = fmt.Fprintf(w, "Read Timeout\t%s\n", cfg.HTTP.ReadTimeout)
+		_, _ = fmt.Fprintf(w, "Write Timeout\t%s\n", cfg.HTTP.WriteTimeout)
+		_, _ = fmt.Fprintf(w, "Idle Timeout\t%s\n", cfg.HTTP.IdleTimeout)
 	}
 
 	return nil
@@ -131,37 +133,38 @@ func showConfigJSON(cfg *config.Config) error {
 }
 
 func runConfigValidate(cmd *cobra.Command, args []string) error {
-	fmt.Printf("Loading configuration...\n")
+	cmd.Printf("Loading configuration...\n")
 
 	// Load configuration
 	cfg, err := loadConfigFromFlags(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	fmt.Printf("Validating configuration...\n")
-
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		fmt.Printf("❌ Configuration validation failed:\n")
-		fmt.Printf("   %s\n", err.Error())
+		cmd.Printf("❌ Failed to load configuration: %v\n", err)
 		return err
 	}
 
-	fmt.Printf("✅ Configuration is valid\n")
+	cmd.Printf("Validating configuration...\n")
 
-	// Show summary
-	fmt.Printf("\nConfiguration Summary:\n")
-	fmt.Printf("  Transport: %s\n", cfg.Transport)
-	fmt.Printf("  Vikunja Host: %s\n", cfg.Vikunja.Host)
-
-	if cfg.Transport == config.TransportHTTP {
-		fmt.Printf("  HTTP Address: %s\n", cfg.HTTP.Address())
-		fmt.Printf("  Session Timeout: %s\n", cfg.HTTP.SessionTimeout)
-		fmt.Printf("  Stateless: %t\n", cfg.HTTP.Stateless)
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		cmd.Printf("❌ Configuration validation failed:\n")
+		cmd.Printf("   %s\n", err.Error())
+		return err
 	}
 
-	fmt.Printf("\n✅ MCP server should start successfully\n")
+	cmd.Printf("✅ Configuration is valid\n")
+
+	// Show summary
+	cmd.Printf("\nConfiguration Summary:\n")
+	cmd.Printf("  Transport: %s\n", cfg.Transport)
+	cmd.Printf("  Vikunja Host: %s\n", cfg.Vikunja.Host)
+
+	if cfg.Transport == config.TransportHTTP {
+		cmd.Printf("  HTTP Address: %s\n", cfg.HTTP.Address())
+		cmd.Printf("  Session Timeout: %s\n", cfg.HTTP.SessionTimeout)
+		cmd.Printf("  Stateless: %t\n", cfg.HTTP.Stateless)
+	}
+
+	cmd.Printf("\n✅ MCP server should start successfully\n")
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 )
 
 func TestCreateTransportServer_Stdio(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Transport: config.TransportStdio,
 	}
@@ -34,6 +35,7 @@ func TestCreateTransportServer_Stdio(t *testing.T) {
 }
 
 func TestCreateTransportServer_HTTP(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Transport: config.TransportHTTP,
 		HTTP: config.HTTPConfig{
@@ -64,6 +66,7 @@ func TestCreateTransportServer_HTTP(t *testing.T) {
 }
 
 func TestCreateTransportServer_Unsupported(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Transport: "websocket",
 	}
@@ -77,12 +80,13 @@ func TestCreateTransportServer_Unsupported(t *testing.T) {
 	)
 
 	server, err := CreateTransportServer(mcpServer, cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported transport type")
 	assert.Nil(t, server)
 }
 
 func TestStdioServer_Run(t *testing.T) {
+	t.Parallel()
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "test-server",
@@ -137,6 +141,7 @@ func TestHTTPServer_Run_ContextCancellation(t *testing.T) {
 }
 
 func TestHTTPServer_Run_BoundPort(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		Transport: config.TransportHTTP,
 		HTTP: config.HTTPConfig{

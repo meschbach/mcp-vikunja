@@ -261,7 +261,7 @@ func (c *Config) Validate() error {
 		address := net.JoinHostPort(c.HTTP.Host, strconv.Itoa(c.HTTP.Port))
 		conn, err := net.DialTimeout("tcp", address, 1*time.Second)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("HTTP address %s is already in use", address)
 		}
 	}

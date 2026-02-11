@@ -2,7 +2,6 @@
 package cmd
 
 import (
-	"fmt"
 	"runtime"
 
 	"github.com/spf13/cobra"
@@ -31,11 +30,11 @@ This includes the version number, git commit hash, build time, and Go runtime
 version. Useful for debugging and ensuring you're running the expected build.`,
 	Example: `  mcp-vikunja version`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("mcp-vikunja version %s\n", versionInfo.Version)
-		fmt.Printf("Commit:      %s\n", versionInfo.Commit)
-		fmt.Printf("Built:       %s\n", versionInfo.BuildTime)
-		fmt.Printf("Go version:  %s\n", versionInfo.GoVersion)
-		fmt.Printf("OS/Arch:     %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		cmd.Printf("mcp-vikunja version %s\n", versionInfo.Version)
+		cmd.Printf("Commit:      %s\n", versionInfo.Commit)
+		cmd.Printf("Built:       %s\n", versionInfo.BuildTime)
+		cmd.Printf("Go version:  %s\n", versionInfo.GoVersion)
+		cmd.Printf("OS/Arch:     %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	},
 }
 

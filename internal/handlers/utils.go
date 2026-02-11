@@ -251,7 +251,52 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-// stringPtr returns a pointer to a string
-func stringPtr(s string) *string {
-	return &s
+// ValidationError represents a validation error with field name and message
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e ValidationError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Field, e.Message)
+}
+
+// validateRequiredString checks if a required string field is non-empty
+func validateRequiredString(fieldName, value string) error {
+	if value == "" {
+		return ValidationError{Field: fieldName, Message: "is required"}
+	}
+	return nil
+}
+
+// parseID parses a string ID and validates it's a positive integer
+func parseID(fieldName, value string) (int64, error) {
+	if value == "" {
+		return 0, ValidationError{Field: fieldName, Message: "is required"}
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, ValidationError{Field: fieldName, Message: fmt.Sprintf("must be a valid integer, got: %s", value)}
+	}
+	if id <= 0 {
+		return 0, ValidationError{Field: fieldName, Message: fmt.Sprintf("must be a positive integer, got: %d", id)}
+	}
+	return id, nil
+}
+
+// validateViewKind checks if a view kind is valid
+func validateViewKind(kind string) error {
+	if kind == "" {
+		return nil // Optional field
+	}
+	validKinds := map[string]bool{
+		"list":   true,
+		"kanban": true,
+		"gantt":  true,
+		"table":  true,
+	}
+	if !validKinds[kind] {
+		return ValidationError{Field: "view_kind", Message: fmt.Sprintf("must be one of: list, kanban, gantt, table. Got: %s", kind)}
+	}
+	return nil
 }

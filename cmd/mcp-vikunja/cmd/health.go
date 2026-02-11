@@ -47,7 +47,7 @@ func runHealth(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("vikunja token is required (use --vikunja-token or VIKUNJA_TOKEN)")
 	}
 
-	fmt.Printf("Testing connection to Vikunja at: %s\n", host)
+	cmd.Printf("Testing connection to Vikunja at: %s\n", host)
 
 	// Create Vikunja client
 	vikunjaClient, err := vikunja.NewClient(host, token, false)
@@ -59,25 +59,25 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	fmt.Printf("Fetching projects...\n")
+	cmd.Printf("Fetching projects...\n")
 	projects, err := vikunjaClient.GetProjects(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to Vikunja: %w", err)
 	}
 
-	fmt.Printf("✓ Successfully connected to Vikunja\n")
-	fmt.Printf("✓ Found %d projects\n", len(projects))
+	cmd.Printf("✓ Successfully connected to Vikunja\n")
+	cmd.Printf("✓ Found %d projects\n", len(projects))
 
 	// Test fetching tasks from first project (if any)
 	if len(projects) > 0 {
-		fmt.Printf("Testing task access from project '%s'...\n", projects[0].Title)
+		cmd.Printf("Testing task access from project '%s'...\n", projects[0].Title)
 		tasks, err := vikunjaClient.GetTasks(ctx, projects[0].ID)
 		if err != nil {
 			return fmt.Errorf("failed to fetch tasks: %w", err)
 		}
-		fmt.Printf("✓ Successfully accessed %d tasks\n", len(tasks))
+		cmd.Printf("✓ Successfully accessed %d tasks\n", len(tasks))
 	}
 
-	fmt.Printf("✓ All health checks passed - MCP server should work correctly\n")
+	cmd.Printf("✓ All health checks passed - MCP server should work correctly\n")
 	return nil
 }

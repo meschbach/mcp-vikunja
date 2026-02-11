@@ -4,7 +4,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/meschbach/mcp-vikunja/internal/config"
 	"github.com/meschbach/mcp-vikunja/internal/handlers"
+	"github.com/meschbach/mcp-vikunja/internal/health"
+	"github.com/meschbach/mcp-vikunja/internal/logging"
 	"github.com/meschbach/mcp-vikunja/internal/transport"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -60,11 +61,15 @@ func init() {
 
 func runServer(cmd *cobra.Command, args []string) error {
 	// Setup logging
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logConfig := logging.LoadConfig()
 	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		logConfig.Level = logging.LevelDebug
 	}
-	slog.SetDefault(logger)
+	logger, err := logging.NewLogger(logConfig)
+	if err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	logger = logging.WithComponent(logger, "server")
 
 	// Get output format from CLI flag
 	var cliFormat *string
@@ -171,6 +176,20 @@ view, and buckets as you need.
 	transportServer, err := transport.CreateTransportServer(s, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create transport server: %w", err)
+	}
+
+	// Setup health checks for HTTP transport
+	if cfg.Transport == config.TransportHTTP {
+		hc := health.NewHealthChecker()
+		hc.Register(&health.ServerCheck{})
+
+		// Try to set health checker on HTTP server
+		if httpServer, ok := transportServer.(*transport.HTTPServer); ok {
+			httpServer.SetHealthChecker(hc)
+			logger.Info("health check endpoints registered",
+				"endpoints", []string{"/health", "/health/live", "/health/ready"},
+			)
+		}
 	}
 
 	// Start the server

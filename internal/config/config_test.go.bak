@@ -46,7 +46,7 @@ func TestLoad_InvalidTransport(t *testing.T) {
 	defer func() { _ = os.Unsetenv("MCP_TRANSPORT") }()
 
 	_, err := Load(nil, nil)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid transport type")
 }
 
@@ -103,7 +103,7 @@ func TestLoad_InvalidHTTPPort(t *testing.T) {
 	defer func() { _ = os.Unsetenv("MCP_HTTP_PORT") }()
 
 	_, err := Load(nil, nil)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid HTTP port")
 }
 
@@ -112,7 +112,7 @@ func TestLoad_InvalidDuration(t *testing.T) {
 	defer func() { _ = os.Unsetenv("MCP_HTTP_SESSION_TIMEOUT") }()
 
 	_, err := Load(nil, nil)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid session timeout")
 }
 
@@ -121,7 +121,7 @@ func TestLoad_InvalidBool(t *testing.T) {
 	defer func() { _ = os.Unsetenv("MCP_HTTP_STATELESS") }()
 
 	_, err := Load(nil, nil)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid stateless flag")
 }
 
@@ -161,7 +161,7 @@ func TestValidate_InvalidTransport(t *testing.T) {
 	}
 
 	err := cfg.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid transport type")
 }
 
@@ -179,7 +179,7 @@ func TestValidate_InvalidHTTPPort(t *testing.T) {
 	}
 
 	err := cfg.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid HTTP port")
 }
 
@@ -211,7 +211,7 @@ func TestValidate_MissingVikunjaHost(t *testing.T) {
 	}
 
 	err := cfg.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "VIKUNJA_HOST is required")
 }
 
@@ -225,7 +225,7 @@ func TestValidate_MissingVikunjaToken(t *testing.T) {
 	}
 
 	err := cfg.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "VIKUNJA_TOKEN is required")
 }
 
@@ -295,7 +295,7 @@ func TestParseOutputFormat(t *testing.T) {
 				require.Error(t, err)
 				assert.Equal(t, vikunja.OutputFormatJSON, result) // Should return default on error
 			} else {
-				require.NoError(t, err)
+				assert.NoError(t, err)
 				assert.Equal(t, tt.expected, result)
 			}
 		})
@@ -304,7 +304,7 @@ func TestParseOutputFormat(t *testing.T) {
 
 func TestLoad_CLIFormatPrecedence(t *testing.T) {
 	// Clear environment variables
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 
 	// Test CLI flag overrides environment
 	json := "json"
@@ -318,13 +318,19 @@ func TestLoad_CLIFormatPrecedence(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
 
+	// Test CLI flag with invalid value
+	invalid := "invalid"
+	cfg, err = Load(&invalid, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --output-format value")
+
 	// Clean up
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 }
 
 func TestLoad_EnvironmentVariableFallback(t *testing.T) {
 	// Clear environment variables
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 
 	// Test with no CLI flag - should use default (Markdown for AI/LLM compatibility)
 	cfg, err := Load(nil, nil)
@@ -332,11 +338,11 @@ func TestLoad_EnvironmentVariableFallback(t *testing.T) {
 	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
 
 	// Test with environment variable - no CLI flag
-	_ = os.Setenv("VIKUNJA_OUTPUT_FORMAT", "markdown")
+	os.Setenv("VIKUNJA_OUTPUT_FORMAT", "markdown")
 	cfg, err = Load(nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
 
 	// Clean up
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+	os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 }

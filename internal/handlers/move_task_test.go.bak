@@ -36,11 +36,11 @@ func TestMoveTaskToBucketHandler_ReadOnlyMode(t *testing.T) {
 
 func TestMoveTaskToBucketHandler_InvalidTaskID(t *testing.T) {
 	// Setup test environment variables to avoid panics in createVikunjaClient
-	_ = os.Setenv("VIKUNJA_HOST", "test.example.com")
-	_ = os.Setenv("VIKUNJA_TOKEN", "test-token")
+	os.Setenv("VIKUNJA_HOST", "test.example.com")
+	os.Setenv("VIKUNJA_TOKEN", "test-token")
 	defer func() {
-		_ = os.Unsetenv("VIKUNJA_HOST")
-		_ = os.Unsetenv("VIKUNJA_TOKEN")
+		os.Unsetenv("VIKUNJA_HOST")
+		os.Unsetenv("VIKUNJA_TOKEN")
 	}()
 
 	// Setup non-readonly config
@@ -65,7 +65,7 @@ func TestMoveTaskToBucketHandler_InvalidTaskID(t *testing.T) {
 	// Safely check content
 	if len(result.Content) > 0 {
 		if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
-			assert.Contains(t, textContent.Text, "task_id: must be a valid integer")
+			assert.Contains(t, textContent.Text, "Invalid task_id")
 		}
 	}
 	assert.Equal(t, MoveTaskToBucketOutput{}, output)

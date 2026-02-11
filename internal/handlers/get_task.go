@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,9 +17,9 @@ func (h *Handlers) getTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, GetTaskOutput{}, err
 	}
 
-	taskID, err := strconv.ParseInt(input.TaskID, 10, 64)
+	taskID, err := parseID("task_id", input.TaskID)
 	if err != nil {
-		return nil, GetTaskOutput{}, fmt.Errorf("invalid task_id: %s", input.TaskID)
+		return h.buildErrorResult(err.Error()), GetTaskOutput{}, err
 	}
 
 	task, err := client.GetTask(ctx, taskID) // This task already has buckets expanded
@@ -110,14 +109,14 @@ func (h *Handlers) listBucketsHandler(ctx context.Context, _ *mcp.CallToolReques
 		return nil, ListBucketsOutput{}, err
 	}
 
-	projectID, err := strconv.ParseInt(input.ProjectID, 10, 64)
+	projectID, err := parseID("project_id", input.ProjectID)
 	if err != nil {
-		return nil, ListBucketsOutput{}, fmt.Errorf("invalid project_id: %s", input.ProjectID)
+		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, err
 	}
 
-	viewID, err := strconv.ParseInt(input.ViewID, 10, 64)
+	viewID, err := parseID("view_id", input.ViewID)
 	if err != nil {
-		return nil, ListBucketsOutput{}, fmt.Errorf("invalid view_id: %s", input.ViewID)
+		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, err
 	}
 
 	buckets, err := client.GetViewBuckets(ctx, projectID, viewID)

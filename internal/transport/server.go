@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/meschbach/mcp-vikunja/internal/config"
+	"github.com/meschbach/mcp-vikunja/internal/health"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -47,14 +48,15 @@ func (s *StdioServer) Run(ctx context.Context) error {
 
 // HTTPServer implements the HTTP transport using the streamable protocol.
 type HTTPServer struct {
-	server *mcp.Server
-	config *config.Config
+	server        *mcp.Server
+	config        *config.Config
+	healthChecker *health.HealthChecker
 }
 
 // Run starts the MCP server with HTTP transport.
 func (s *HTTPServer) Run(ctx context.Context) error {
 	// Create the streamable HTTP handler
-	handler := mcp.NewStreamableHTTPHandler(
+	mcpHandler := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server {
 			return s.server
 		},
@@ -64,6 +66,20 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 		},
 	)
 
+	// Create mux and register handlers
+	mux := http.NewServeMux()
+
+	// Register MCP handler
+	mux.Handle("/mcp", mcpHandler)
+	mux.Handle("/mcp/", mcpHandler)
+
+	// Register health check handlers if health checker is configured
+	if s.healthChecker != nil {
+		mux.HandleFunc("/health", s.healthChecker.HTTPHandler(""))
+		mux.HandleFunc("/health/live", s.healthChecker.HTTPHandler(health.CheckTypeLiveness))
+		mux.HandleFunc("/health/ready", s.healthChecker.HTTPHandler(health.CheckTypeReadiness))
+	}
+
 	// Create HTTP server with proper timeouts, defaulting to port 8080
 	addr := s.config.HTTP.Address()
 	if addr == "" || addr == ":0" {
@@ -72,7 +88,7 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 
 	httpServer := &http.Server{
 		Addr:         addr,
-		Handler:      handler,
+		Handler:      mux,
 		ReadTimeout:  s.config.HTTP.ReadTimeout,
 		WriteTimeout: s.config.HTTP.WriteTimeout,
 		IdleTimeout:  s.config.HTTP.IdleTimeout,
@@ -111,4 +127,9 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 		// Server failed to start or unexpected error occurred
 		return err
 	}
+}
+
+// SetHealthChecker sets the health checker for the HTTP server
+func (s *HTTPServer) SetHealthChecker(hc *health.HealthChecker) {
+	s.healthChecker = hc
 }

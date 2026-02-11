@@ -4,7 +4,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -27,27 +26,27 @@ func (h *Handlers) moveTaskToBucketHandler(ctx context.Context, _ *mcp.CallToolR
 	}
 
 	// Parse and validate task ID
-	taskID, err := strconv.ParseInt(input.TaskID, 10, 64)
+	taskID, err := parseID("task_id", input.TaskID)
 	if err != nil {
-		return h.buildErrorResult(fmt.Sprintf("Invalid task_id: %s", input.TaskID)), MoveTaskToBucketOutput{}, fmt.Errorf("invalid task_id: %s", input.TaskID)
+		return h.buildErrorResult(err.Error()), MoveTaskToBucketOutput{}, err
 	}
 
 	// Parse and validate project ID
-	projectID, err := strconv.ParseInt(input.ProjectID, 10, 64)
+	projectID, err := parseID("project_id", input.ProjectID)
 	if err != nil {
-		return h.buildErrorResult(fmt.Sprintf("Invalid project_id: %s", input.ProjectID)), MoveTaskToBucketOutput{}, fmt.Errorf("invalid project_id: %s", input.ProjectID)
+		return h.buildErrorResult(err.Error()), MoveTaskToBucketOutput{}, err
 	}
 
 	// Parse and validate view ID
-	viewID, err := strconv.ParseInt(input.ViewID, 10, 64)
+	viewID, err := parseID("view_id", input.ViewID)
 	if err != nil {
-		return h.buildErrorResult(fmt.Sprintf("Invalid view_id: %s", input.ViewID)), MoveTaskToBucketOutput{}, fmt.Errorf("invalid view_id: %s", input.ViewID)
+		return h.buildErrorResult(err.Error()), MoveTaskToBucketOutput{}, err
 	}
 
 	// Parse and validate bucket ID
-	bucketID, err := strconv.ParseInt(input.BucketID, 10, 64)
+	bucketID, err := parseID("bucket_id", input.BucketID)
 	if err != nil {
-		return h.buildErrorResult(fmt.Sprintf("Invalid bucket_id: %s", input.BucketID)), MoveTaskToBucketOutput{}, fmt.Errorf("invalid bucket_id: %s", input.BucketID)
+		return h.buildErrorResult(err.Error()), MoveTaskToBucketOutput{}, err
 	}
 
 	// Basic validation: verify task exists

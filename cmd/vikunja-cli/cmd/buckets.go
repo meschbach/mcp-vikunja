@@ -51,7 +51,7 @@ var bucketsListCmd = &cobra.Command{
 				for i := 1; i < len(views); i++ {
 					markdownOutput += "\n---\n\n" + formatter.FormatViewAsMarkdown(views[i])
 				}
-				fmt.Fprintf(outputWriter, "%s", markdownOutput)
+				_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 				return nil
 			}
 
@@ -75,7 +75,7 @@ var bucketsListCmd = &cobra.Command{
 
 		if markdown {
 			markdownOutput := formatter.FormatBucketsAsMarkdown(buckets)
-			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 			return nil
 		}
 
@@ -165,7 +165,7 @@ var bucketsTasksCmd = &cobra.Command{
 
 		if markdown {
 			markdownOutput := formatter.FormatViewTasksAsMarkdown(vt)
-			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 			return nil
 		}
 

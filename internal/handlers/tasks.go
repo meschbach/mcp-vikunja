@@ -4,7 +4,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -66,9 +65,9 @@ func (h *Handlers) listTasksHandler(ctx context.Context, _ *mcp.CallToolRequest,
 // validateBucketFiltering validates bucket filtering parameters
 func (h *Handlers) validateBucketFiltering(input ListTasksInput) (*int64, string, error) {
 	if input.BucketID != "" {
-		bucketID, err := strconv.ParseInt(input.BucketID, 10, 64)
+		bucketID, err := parseID("bucket_id", input.BucketID)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid bucket_id: %s", input.BucketID)
+			return nil, "", err
 		}
 		return &bucketID, "", nil
 	}
@@ -81,9 +80,9 @@ func (h *Handlers) validateBucketFiltering(input ListTasksInput) (*int64, string
 // resolveProject resolves the project from input parameters
 func (h *Handlers) resolveProject(ctx context.Context, client *vikunja.Client, input ListTasksInput) (*Project, int64, error) {
 	if input.ProjectID != "" {
-		targetProjectID, err := strconv.ParseInt(input.ProjectID, 10, 64)
+		targetProjectID, err := parseID("project_id", input.ProjectID)
 		if err != nil {
-			return nil, 0, fmt.Errorf("invalid project_id: %s", input.ProjectID)
+			return nil, 0, err
 		}
 		return nil, targetProjectID, nil
 	}
@@ -140,9 +139,9 @@ func (h *Handlers) resolveView(ctx context.Context, client *vikunja.Client, targ
 
 // resolveViewByID resolves view by ID
 func (h *Handlers) resolveViewByID(viewIDStr string, views []vikunja.ProjectView) (int64, string, error) {
-	targetViewID, err := strconv.ParseInt(viewIDStr, 10, 64)
+	targetViewID, err := parseID("view_id", viewIDStr)
 	if err != nil {
-		return 0, "", fmt.Errorf("invalid view_id: %s", viewIDStr)
+		return 0, "", err
 	}
 
 	for _, v := range views {
@@ -206,7 +205,7 @@ func (h *Handlers) findBucket(buckets []vikunja.Bucket, targetBucketID *int64, t
 				return &buckets[i], nil
 			}
 		}
-		return nil, fmt.Errorf("bucket with ID %q not found in view %q", *targetBucketID, targetViewTitle)
+		return nil, fmt.Errorf("bucket with ID %d not found in view %q", *targetBucketID, targetViewTitle)
 	}
 
 	if targetBucketTitle != "" {

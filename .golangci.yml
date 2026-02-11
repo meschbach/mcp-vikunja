@@ -7,13 +7,19 @@ run:
     - vendor
 
 linters:
+  disable-all: true
   enable:
+    # Core
     - errcheck
     - govet
     - ineffassign
     - staticcheck
     - unused
+    
+    # Security
     - gosec
+    
+    # Code quality
     - gocritic
     - gocyclo
     - dupl
@@ -21,8 +27,12 @@ linters:
     - dogsled
     - makezero
     - prealloc
+    
+    # Testing
     - paralleltest
     - testifylint
+    
+    # Modern practices
     - exhaustive
     - forbidigo
 
@@ -33,17 +43,21 @@ formatters:
 
 linters-settings:
   gocyclo:
-    min-complexity: 10
+    min-complexity: 8
   gosec:
     excludes:
-      - G204
+      - G204  # Subprocess launching may be allowed in this context
   dupl:
-    threshold: 100
+    threshold: 80
   misspell:
     locale: US
   forbidigo:
     forbid:
-      - 'fmt\.Print.*'
+      - 'fmt\.Print.*'  # Use structured logging instead
+    exclude-glob:
+      - 'cmd/vikunja-cli/**/*.go'  # CLI tools need user output
+      - 'pkg/vikunja/formatter.go' # Output formatting library
+  
   gocritic:
     enabled-tags:
       - diagnostic
@@ -57,3 +71,12 @@ linters-settings:
       - octalLiteral
       - whyNoLint
       - wrapperFunc
+      
+  errcheck:
+    check-type-assertions: true
+    check-blank: false  # Allow _ = errors for explicit ignoring
+    exclude-functions:
+      - (fmt\.Fprintf).*outputWriter  # CLI user output is legitimate
+    
+  paralleltest:
+    ignore-auto: false  # Require explicit t.Parallel() calls

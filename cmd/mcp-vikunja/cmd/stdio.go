@@ -4,13 +4,13 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/meschbach/mcp-vikunja/internal/config"
 	"github.com/meschbach/mcp-vikunja/internal/handlers"
+	"github.com/meschbach/mcp-vikunja/internal/logging"
 	"github.com/meschbach/mcp-vikunja/internal/transport"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -40,11 +40,15 @@ func init() {
 
 func runStdio(cmd *cobra.Command, args []string) error {
 	// Setup logging
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logConfig := logging.LoadConfig()
 	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		logConfig.Level = logging.LevelDebug
 	}
-	slog.SetDefault(logger)
+	logger, err := logging.NewLogger(logConfig)
+	if err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	logger = logging.WithComponent(logger, "stdio")
 
 	// Get output format from CLI flag
 	var cliFormat *string

@@ -43,7 +43,7 @@ var projectsListCmd = &cobra.Command{
 
 		if markdown {
 			markdownOutput := formatter.FormatProjectsAsMarkdown(projects)
-			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 			return nil
 		}
 
@@ -74,7 +74,7 @@ var projectsGetCmd = &cobra.Command{
 			if !noColor {
 				color.Red("Project not found: %d\n", id)
 			} else {
-				fmt.Fprintf(outputWriter, "Project not found: %d\n", id)
+				_, _ = fmt.Fprintf(outputWriter, "Project not found: %d\n", id)
 			}
 			return nil
 		}
@@ -87,7 +87,7 @@ var projectsGetCmd = &cobra.Command{
 
 		if markdown {
 			markdownOutput := formatter.FormatProjectAsMarkdown(*project)
-			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 			return nil
 		}
 

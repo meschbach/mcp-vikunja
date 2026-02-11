@@ -38,6 +38,11 @@ func (h *Handlers) listProjectsHandler(ctx context.Context, _ *mcp.CallToolReque
 
 // findProjectByNameHandler handles the find_project_by_name tool
 func (h *Handlers) findProjectByNameHandler(ctx context.Context, _ *mcp.CallToolRequest, input FindProjectByNameInput) (*mcp.CallToolResult, FindProjectByNameOutput, error) {
+	// Validate required field
+	if err := validateRequiredString("name", input.Name); err != nil {
+		return h.buildErrorResult(err.Error()), FindProjectByNameOutput{}, err
+	}
+
 	client, err := createVikunjaClient()
 	if err != nil {
 		return nil, FindProjectByNameOutput{}, err

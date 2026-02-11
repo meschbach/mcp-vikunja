@@ -11,6 +11,11 @@ import (
 
 // findViewHandler handles the find_view tool
 func (h *Handlers) findViewHandler(ctx context.Context, _ *mcp.CallToolRequest, input FindViewInput) (*mcp.CallToolResult, FindViewOutput, error) {
+	// Validate required field
+	if err := validateRequiredString("view_name", input.ViewName); err != nil {
+		return h.buildErrorResult(err.Error()), FindViewOutput{}, err
+	}
+
 	client, err := createVikunjaClient()
 	if err != nil {
 		return nil, FindViewOutput{}, fmt.Errorf("failed to create client: %w", err)
@@ -69,6 +74,11 @@ func (h *Handlers) findViewHandler(ctx context.Context, _ *mcp.CallToolRequest, 
 
 // listViewsHandler handles the list_views tool
 func (h *Handlers) listViewsHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListViewsInput) (*mcp.CallToolResult, ListViewsOutput, error) {
+	// Validate view_kind if provided
+	if err := validateViewKind(input.ViewKind); err != nil {
+		return h.buildErrorResult(err.Error()), ListViewsOutput{}, err
+	}
+
 	client, err := createVikunjaClient()
 	if err != nil {
 		return nil, ListViewsOutput{}, fmt.Errorf("failed to create client: %w", err)

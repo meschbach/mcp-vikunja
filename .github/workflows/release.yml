@@ -1,0 +1,129 @@
+# Release workflow for MCP Vikunja
+# Triggered on pushes to main branch
+# Creates GitHub releases with multi-platform binaries
+
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-release
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: |
+          go test -race -coverprofile=coverage.out ./...
+
+      - name: Verify coverage threshold
+        run: |
+          coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${coverage}%"
+          if (( $(echo "$coverage < 60" | bc -l) )); then
+            echo "❌ Coverage below 60%"
+            exit 1
+          fi
+          echo "✅ Coverage threshold met"
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test]
+    # Only run release for pushes to main (not PRs) and manual triggers
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.triggering_actor == 'meschbach'
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Bump version and push tag
+        uses: anothrNick/github-tag-action@v1
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
+          DEFAULT_BUMP: patch
+
+      - name: Build release artifacts
+        run: |
+          chmod +x release.sh
+          ./release.sh
+
+      - name: Push version tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: |
+            release/mcp-vikunja_*.tgz
+
+      - name: Generate release summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          ls -lh release/mcp-vikunja_*.tgz | awk '{print "- " $9 " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push slacker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: "linux/amd64,linux/arm64"
+          file: cmd/slacker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.tag }}

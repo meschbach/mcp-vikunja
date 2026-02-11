@@ -10,6 +10,7 @@ import (
 )
 
 func TestFormatter_FormatProjects(t *testing.T) {
+	t.Parallel()
 	projects := []Project{
 		{ID: 1, Title: "Project A", Description: "Test project A"},
 		{ID: 2, Title: "Project B", Description: "Test project B"},
@@ -31,6 +32,7 @@ func TestFormatter_FormatProjects(t *testing.T) {
 }
 
 func TestFormatter_FormatProject(t *testing.T) {
+	t.Parallel()
 	project := &Project{
 		ID:          1,
 		Title:       "Test Project",
@@ -51,6 +53,7 @@ func TestFormatter_FormatProject(t *testing.T) {
 }
 
 func TestFormatter_FormatTasks(t *testing.T) {
+	t.Parallel()
 	tasks := []Task{
 		{ID: 1, Title: "Task A", Description: "Test task A", ProjectID: 1},
 		{ID: 2, Title: "Task B", Description: "Test task B", ProjectID: 1},
@@ -72,6 +75,7 @@ func TestFormatter_FormatTasks(t *testing.T) {
 }
 
 func TestFormatter_FormatTask(t *testing.T) {
+	t.Parallel()
 	task := &Task{
 		ID:          1,
 		Title:       "Test Task",
@@ -94,6 +98,7 @@ func TestFormatter_FormatTask(t *testing.T) {
 }
 
 func TestFormatter_FormatProjectsAsJSON(t *testing.T) {
+	t.Parallel()
 	projects := []Project{
 		{ID: 1, Title: "Project A", Description: "Test project A"},
 	}
@@ -110,6 +115,7 @@ func TestFormatter_FormatProjectsAsJSON(t *testing.T) {
 }
 
 func TestFormatter_FormatTasksAsJSON(t *testing.T) {
+	t.Parallel()
 	tasks := []Task{
 		{ID: 1, Title: "Task A", Description: "Test task A", ProjectID: 1},
 	}
@@ -127,6 +133,7 @@ func TestFormatter_FormatTasksAsJSON(t *testing.T) {
 }
 
 func TestFormatter_EmptyProjects(t *testing.T) {
+	t.Parallel()
 	projects := []Project{}
 
 	buf := &bytes.Buffer{}
@@ -142,6 +149,7 @@ func TestFormatter_EmptyProjects(t *testing.T) {
 }
 
 func TestFormatter_EmptyTasks(t *testing.T) {
+	t.Parallel()
 	tasks := []Task{}
 
 	buf := &bytes.Buffer{}
@@ -157,6 +165,7 @@ func TestFormatter_EmptyTasks(t *testing.T) {
 }
 
 func TestFormatter_FormatBuckets(t *testing.T) {
+	t.Parallel()
 	buckets := []Bucket{
 		{ID: 1, Title: "To Do", Position: 1.5, IsDoneBucket: false},
 		{ID: 2, Title: "Done", Position: 2.0, IsDoneBucket: true},
@@ -181,6 +190,7 @@ func TestFormatter_FormatBuckets(t *testing.T) {
 }
 
 func TestFormatter_FormatProjectViews(t *testing.T) {
+	t.Parallel()
 	views := []ProjectView{
 		{ID: 1, Title: "List View", ViewKind: ViewKindList, Position: 1.1},
 		{ID: 2, Title: "Kanban View", ViewKind: ViewKindKanban, Position: 2.2},
@@ -205,6 +215,7 @@ func TestFormatter_FormatProjectViews(t *testing.T) {
 }
 
 func TestFormatter_FormatTaskWithBuckets(t *testing.T) {
+	t.Parallel()
 	task := &Task{
 		ID:    1,
 		Title: "Test Task",
@@ -248,6 +259,7 @@ func TestFormatter_FormatTaskWithBuckets(t *testing.T) {
 }
 
 func TestFormatter_FormatViewTasks(t *testing.T) {
+	t.Parallel()
 	formatter := NewFormatter(false, nil)
 	vt := &ViewTasks{
 		ViewID:    1,
@@ -271,7 +283,7 @@ func TestFormatter_FormatViewTasks(t *testing.T) {
 		return formatter.FormatViewTasks(vt)
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	expectedParts := []string{
 		"Test View (ID: 1)",
@@ -288,6 +300,7 @@ func TestFormatter_FormatViewTasks(t *testing.T) {
 }
 
 func TestFormatter_FormatTasksAsMarkdown(t *testing.T) {
+	t.Parallel()
 	formatter := NewFormatter(false, nil)
 
 	tests := []struct {
@@ -342,6 +355,7 @@ func TestFormatter_FormatTasksAsMarkdown(t *testing.T) {
 }
 
 func TestFormatter_FormatProjectsAsMarkdown(t *testing.T) {
+	t.Parallel()
 	formatter := NewFormatter(false, nil)
 
 	tests := []struct {
@@ -390,6 +404,7 @@ A test project description
 }
 
 func TestFormatter_FormatProjectsAsMarkdown_Robustness(t *testing.T) {
+	t.Parallel()
 	formatter := NewFormatter(false, nil)
 
 	tests := []struct {
@@ -539,6 +554,7 @@ Complete description
 }
 
 func TestFormatter_FormatBucketsAsMarkdown(t *testing.T) {
+	t.Parallel()
 	formatter := NewFormatter(false, nil)
 
 	tests := []struct {
@@ -811,7 +827,7 @@ func TestMarkdownFormatter_AllNewTypes(t *testing.T) {
 	}
 
 	result, err := formatter.Format(taskOutput)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, result, "# Test Task")
 	assert.Contains(t, result, "- **ID**: 1")
 	assert.Contains(t, result, "**Bucket Information**:")
@@ -837,7 +853,7 @@ func TestMarkdownFormatter_ViewTasksSummaryIntegration(t *testing.T) {
 	}
 
 	result, err := formatter.Format(viewTasks)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, result, "# 📋 Test Board (ID: 1)")
 	assert.Contains(t, result, "## 📁 To Do (ID: 1)")
 	assert.Contains(t, result, "[Task 1] Test Task 1")

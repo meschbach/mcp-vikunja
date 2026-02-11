@@ -54,7 +54,7 @@ var tasksListCmd = &cobra.Command{
 
 		if markdown {
 			markdownOutput := formatter.FormatTasksAsMarkdown(tasks)
-			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 			return nil
 		}
 
@@ -85,7 +85,7 @@ var tasksGetCmd = &cobra.Command{
 			if !noColor {
 				color.Red("Task not found: %d\n", id)
 			} else {
-				fmt.Fprintf(outputWriter, "Task not found: %d\n", id)
+				_, _ = fmt.Fprintf(outputWriter, "Task not found: %d\n", id)
 			}
 			return nil
 		}
@@ -114,7 +114,7 @@ var tasksGetCmd = &cobra.Command{
 
 		if markdown {
 			markdownOutput := formatter.FormatTaskAsMarkdown(*task)
-			fmt.Fprintf(outputWriter, "%s", markdownOutput)
+			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
 			return nil
 		}
 
