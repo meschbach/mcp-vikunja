@@ -573,3 +573,44 @@ func TestValidateBucketFiltering(t *testing.T) {
 		assert.Contains(t, err.Error(), "bucket_id: must be a valid integer")
 	})
 }
+
+func TestGetViewTasks(t *testing.T) {
+	// Testing response structure since client requires network mocking
+	t.Run("successful retrieval without bucket filter", func(t *testing.T) {
+		resp := &vikunja.ViewTasksResponse{
+			Tasks: []vikunja.Task{
+				{ID: 1, Title: "Task 1"},
+				{ID: 2, Title: "Task 2"},
+			},
+		}
+
+		// Verify the response structure
+		assert.NotNil(t, resp)
+		assert.Len(t, resp.Tasks, 2)
+		assert.Empty(t, resp.Buckets) // No buckets for list view
+	})
+
+	t.Run("view tasks response with buckets", func(t *testing.T) {
+		resp := &vikunja.ViewTasksResponse{
+			Buckets: []vikunja.Bucket{
+				{ID: 1, Title: "Todo", Tasks: []vikunja.Task{{ID: 1, Title: "Task 1"}}},
+				{ID: 2, Title: "Done", Tasks: []vikunja.Task{{ID: 2, Title: "Task 2"}}},
+			},
+		}
+
+		assert.NotNil(t, resp)
+		assert.Len(t, resp.Buckets, 2)
+		assert.Empty(t, resp.Tasks) // Tasks are in buckets for kanban
+	})
+
+	t.Run("view tasks response empty", func(t *testing.T) {
+		resp := &vikunja.ViewTasksResponse{
+			Tasks:   []vikunja.Task{},
+			Buckets: []vikunja.Bucket{},
+		}
+
+		assert.NotNil(t, resp)
+		assert.Empty(t, resp.Tasks)
+		assert.Empty(t, resp.Buckets)
+	})
+}

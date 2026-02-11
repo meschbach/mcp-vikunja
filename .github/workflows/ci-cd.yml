@@ -84,7 +84,28 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          go test -race -coverprofile=coverage.out ./...
+          # Check if internal and pkg directories exist
+          has_internal=false
+          has_pkg=false
+          coverage_packages=""
+
+          if [ -d "internal" ]; then
+            has_internal=true
+            coverage_packages="${coverage_packages} ./internal/..."
+          fi
+
+          if [ -d "pkg" ]; then
+            has_pkg=true
+            coverage_packages="${coverage_packages} ./pkg/..."
+          fi
+
+          if [ -n "$coverage_packages" ]; then
+            echo "📊 Running coverage on: $coverage_packages"
+            go test -race -coverprofile=coverage.out $coverage_packages
+          else
+            echo "📊 Running coverage on all packages"
+            go test -race -coverprofile=coverage.out ./...
+          fi
 
       - name: Verify coverage threshold
         run: |

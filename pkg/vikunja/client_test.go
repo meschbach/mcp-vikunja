@@ -518,6 +518,183 @@ func TestHTTPHelpers(t *testing.T) {
 	})
 }
 
+// TestGetTaskBuckets tests the GetTaskBuckets method
+func TestGetTaskBuckets(t *testing.T) {
+	t.Run("task with buckets in single view", func(t *testing.T) {
+		taskResponse := Task{
+			ID:        123,
+			Title:     "Test Task",
+			ProjectID: 456,
+			Buckets: []Bucket{
+				{ID: 1, Title: "Todo", ProjectViewID: 100, Position: 1},
+				{ID: 2, Title: "Done", ProjectViewID: 100, Position: 2},
+			},
+		}
+
+		viewsResponse := []ProjectView{
+			{ID: 100, Title: "Kanban", ProjectID: 456, ViewKind: ViewKindKanban, DoneBucketID: 2},
+		}
+
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/tasks/123") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(taskResponse)
+			} else if strings.Contains(r.URL.Path, "/projects/456/views") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			}
+		})
+		defer ts.Close()
+
+		bucketInfo, err := client.GetTaskBuckets(context.Background(), 123)
+		require.NoError(t, err)
+		assert.NotNil(t, bucketInfo)
+		assert.Equal(t, int64(123), bucketInfo.TaskID)
+		assert.Len(t, bucketInfo.Views, 1)
+		assert.Equal(t, "Kanban", bucketInfo.Views[0].ViewTitle)
+		assert.NotNil(t, bucketInfo.Views[0].BucketID)
+		assert.NotNil(t, bucketInfo.Views[0].BucketTitle)
+	})
+
+	t.Run("task with buckets in multiple views", func(t *testing.T) {
+		taskResponse := Task{
+			ID:        123,
+			Title:     "Multi-View Task",
+			ProjectID: 456,
+			Buckets: []Bucket{
+				{ID: 1, Title: "Bucket A", ProjectViewID: 100, Position: 1},
+				{ID: 3, Title: "Bucket B", ProjectViewID: 200, Position: 2},
+			},
+		}
+
+		viewsResponse := []ProjectView{
+			{ID: 100, Title: "Kanban", ProjectID: 456, ViewKind: ViewKindKanban, DoneBucketID: 999},
+			{ID: 200, Title: "Second View", ProjectID: 456, ViewKind: ViewKindKanban, DoneBucketID: 3},
+		}
+
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/tasks/123") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(taskResponse)
+			} else if strings.Contains(r.URL.Path, "/projects/456/views") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			}
+		})
+		defer ts.Close()
+
+		bucketInfo, err := client.GetTaskBuckets(context.Background(), 123)
+		require.NoError(t, err)
+		assert.NotNil(t, bucketInfo)
+		assert.Len(t, bucketInfo.Views, 2)
+
+		// First view - bucket 1 is not done bucket
+		assert.Equal(t, int64(100), bucketInfo.Views[0].ViewID)
+		assert.False(t, bucketInfo.Views[0].IsDoneBucket)
+
+		// Second view - bucket 3 is done bucket
+		assert.Equal(t, int64(200), bucketInfo.Views[1].ViewID)
+		assert.True(t, bucketInfo.Views[1].IsDoneBucket)
+	})
+
+	t.Run("task without buckets", func(t *testing.T) {
+		taskResponse := Task{
+			ID:        123,
+			Title:     "Task Without Buckets",
+			ProjectID: 456,
+			Buckets:   []Bucket{},
+		}
+
+		viewsResponse := []ProjectView{
+			{ID: 100, Title: "Kanban", ProjectID: 456, ViewKind: ViewKindKanban},
+		}
+
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/tasks/123") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(taskResponse)
+			} else if strings.Contains(r.URL.Path, "/projects/456/views") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			}
+		})
+		defer ts.Close()
+
+		bucketInfo, err := client.GetTaskBuckets(context.Background(), 123)
+		require.NoError(t, err)
+		assert.NotNil(t, bucketInfo)
+		assert.Len(t, bucketInfo.Views, 1)
+		// Views exist but no bucket information
+		assert.Nil(t, bucketInfo.Views[0].BucketID)
+		assert.Nil(t, bucketInfo.Views[0].BucketTitle)
+	})
+
+	t.Run("task not found", func(t *testing.T) {
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/tasks/999") {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(ErrorResponse{Message: "Task not found"})
+			}
+		})
+		defer ts.Close()
+
+		bucketInfo, err := client.GetTaskBuckets(context.Background(), 999)
+		require.Error(t, err)
+		assert.Nil(t, bucketInfo)
+		assert.Contains(t, err.Error(), "failed to get task")
+	})
+
+	t.Run("views API error", func(t *testing.T) {
+		taskResponse := Task{
+			ID:        123,
+			Title:     "Test Task",
+			ProjectID: 456,
+			Buckets:   []Bucket{{ID: 1, Title: "Bucket", ProjectViewID: 100}},
+		}
+
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/tasks/123") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(taskResponse)
+			} else if strings.Contains(r.URL.Path, "/projects/456/views") {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(ErrorResponse{Message: "Internal server error"})
+			}
+		})
+		defer ts.Close()
+
+		bucketInfo, err := client.GetTaskBuckets(context.Background(), 123)
+		require.Error(t, err)
+		assert.Nil(t, bucketInfo)
+		assert.Contains(t, err.Error(), "failed to get project views")
+	})
+
+	t.Run("empty views list", func(t *testing.T) {
+		taskResponse := Task{
+			ID:        123,
+			Title:     "Test Task",
+			ProjectID: 456,
+			Buckets:   []Bucket{{ID: 1, Title: "Bucket", ProjectViewID: 100}},
+		}
+
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/tasks/123") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(taskResponse)
+			} else if strings.Contains(r.URL.Path, "/projects/456/views") {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode([]ProjectView{})
+			}
+		})
+		defer ts.Close()
+
+		bucketInfo, err := client.GetTaskBuckets(context.Background(), 123)
+		require.NoError(t, err)
+		assert.NotNil(t, bucketInfo)
+		assert.Empty(t, bucketInfo.Views)
+	})
+}
+
 // BenchmarkGetProjects benchmarks the GetProjects method
 func BenchmarkGetProjects(b *testing.B) {
 	expectedProjects := mockProjectsResponse()
