@@ -175,7 +175,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_V: true
           DEFAULT_BUMP: patch
-
+          DRY_RUN: true
       - name: Build release artifacts
         run: |
           chmod +x release.sh
