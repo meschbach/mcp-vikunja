@@ -207,12 +207,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push slacker
+      - name: Build and push mcp-vikunja docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: "linux/amd64,linux/arm64"
-          file: cmd/mcp-vinkunja/Dockerfile
+          file: cmd/mcp-vikunja/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.tag }}
