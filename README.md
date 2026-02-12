@@ -154,7 +154,7 @@ The server provides the following MCP tools:
 
 - `list_tasks` - List tasks from projects with filtering options
 - `get_task` - Get detailed task information including bucket placement
-- `list_buckets` - List all buckets in a project view
+- `list_buckets` - List all buckets in a project view (defaults to Inbox project and Kanban view)
 - `list_projects` - List all available projects
 - `create_task` - Create new tasks (coming soon)
 

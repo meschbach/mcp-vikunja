@@ -109,17 +109,32 @@ func (h *Handlers) listBucketsHandler(ctx context.Context, _ *mcp.CallToolReques
 		return nil, ListBucketsOutput{}, err
 	}
 
-	projectID, err := parseID("project_id", input.ProjectID)
+	// Apply defaults
+	projectTitle := input.ProjectTitle
+	if projectTitle == "" {
+		projectTitle = "Inbox"
+	}
+	viewTitle := input.ViewTitle
+	if viewTitle == "" {
+		viewTitle = "Kanban"
+	}
+
+	project, err := findProjectByIDOrTitle(ctx, client, "", projectTitle)
 	if err != nil {
 		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, err
 	}
 
-	viewID, err := parseID("view_id", input.ViewID)
+	views, err := client.GetProjectViews(ctx, project.ID)
 	if err != nil {
-		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, err
+		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, fmt.Errorf("failed to get project views: %w", err)
 	}
 
-	buckets, err := client.GetViewBuckets(ctx, projectID, viewID)
+	foundView, err := findViewByName(views, viewTitle, false, project.Title)
+	if err != nil {
+		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, fmt.Errorf("%v in project %q", err, project.Title)
+	}
+
+	buckets, err := client.GetViewBuckets(ctx, project.ID, foundView.ID)
 	if err != nil {
 		return nil, ListBucketsOutput{}, fmt.Errorf("failed to get buckets: %w", err)
 	}

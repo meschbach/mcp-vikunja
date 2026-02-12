@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -220,9 +219,8 @@ func TestFilterViewTasksByBucket(t *testing.T) {
 				{ID: 1, Title: "Task 1"},
 			},
 		}
-		bucketID := int64(1)
 
-		result, err := h.filterViewTasksByBucket(resp, &bucketID, "", "List View")
+		result, err := h.filterViewTasksByBucket(resp, 1, "", "List View")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "bucket filtering not supported for non-kanban views")
@@ -237,9 +235,8 @@ func TestFilterViewTasksByBucket(t *testing.T) {
 				{ID: 3, Title: "Bucket 3"},
 			},
 		}
-		bucketID := int64(2)
 
-		result, err := h.filterViewTasksByBucket(resp, &bucketID, "", "Kanban")
+		result, err := h.filterViewTasksByBucket(resp, 2, "", "Kanban")
 
 		require.NoError(t, err)
 		require.Len(t, result.Buckets, 1)
@@ -255,7 +252,7 @@ func TestFilterViewTasksByBucket(t *testing.T) {
 			},
 		}
 
-		result, err := h.filterViewTasksByBucket(resp, nil, "In Progress", "Kanban")
+		result, err := h.filterViewTasksByBucket(resp, 0, "In Progress", "Kanban")
 
 		require.NoError(t, err)
 		require.Len(t, result.Buckets, 1)
@@ -268,9 +265,8 @@ func TestFilterViewTasksByBucket(t *testing.T) {
 				{ID: 1, Title: "Bucket 1"},
 			},
 		}
-		bucketID := int64(999)
 
-		result, err := h.filterViewTasksByBucket(resp, &bucketID, "", "Kanban")
+		result, err := h.filterViewTasksByBucket(resp, 999, "", "Kanban")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "bucket with ID 999 not found in view \"Kanban\"")
@@ -284,7 +280,7 @@ func TestFilterViewTasksByBucket(t *testing.T) {
 			},
 		}
 
-		result, err := h.filterViewTasksByBucket(resp, nil, "NonExistent", "Kanban")
+		result, err := h.filterViewTasksByBucket(resp, 0, "NonExistent", "Kanban")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "bucket with title \"NonExistent\" not found in view \"Kanban\"")
@@ -298,7 +294,7 @@ func TestFilterViewTasksByBucket(t *testing.T) {
 			},
 		}
 
-		result, err := h.filterViewTasksByBucket(resp, nil, "", "Kanban")
+		result, err := h.filterViewTasksByBucket(resp, 0, "", "Kanban")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no bucket filter specified")
@@ -316,8 +312,7 @@ func TestFindBucket(t *testing.T) {
 	}
 
 	t.Run("find by ID success", func(t *testing.T) {
-		bucketID := int64(2)
-		result, err := h.findBucket(buckets, &bucketID, "", "Kanban")
+		result, err := h.findBucket(buckets, 2, "", "Kanban")
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), result.ID)
@@ -325,7 +320,7 @@ func TestFindBucket(t *testing.T) {
 	})
 
 	t.Run("find by title success", func(t *testing.T) {
-		result, err := h.findBucket(buckets, nil, "Done", "Kanban")
+		result, err := h.findBucket(buckets, 0, "Done", "Kanban")
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), result.ID)
@@ -333,8 +328,7 @@ func TestFindBucket(t *testing.T) {
 	})
 
 	t.Run("find by ID not found", func(t *testing.T) {
-		bucketID := int64(999)
-		result, err := h.findBucket(buckets, &bucketID, "", "Kanban")
+		result, err := h.findBucket(buckets, 999, "", "Kanban")
 
 		require.Error(t, err)
 		assert.Nil(t, result)
@@ -342,7 +336,7 @@ func TestFindBucket(t *testing.T) {
 	})
 
 	t.Run("find by title not found", func(t *testing.T) {
-		result, err := h.findBucket(buckets, nil, "NonExistent", "Kanban")
+		result, err := h.findBucket(buckets, 0, "NonExistent", "Kanban")
 
 		require.Error(t, err)
 		assert.Nil(t, result)
@@ -350,47 +344,11 @@ func TestFindBucket(t *testing.T) {
 	})
 
 	t.Run("no filter specified", func(t *testing.T) {
-		result, err := h.findBucket(buckets, nil, "", "Kanban")
+		result, err := h.findBucket(buckets, 0, "", "Kanban")
 
 		require.Error(t, err)
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "no bucket filter specified")
-	})
-}
-
-func TestResolveViewByID(t *testing.T) {
-	h := newTestHandlers()
-
-	views := []vikunja.ProjectView{
-		{ID: 1, Title: "Kanban"},
-		{ID: 2, Title: "List"},
-		{ID: 3, Title: "Gantt"},
-	}
-
-	t.Run("valid view ID found", func(t *testing.T) {
-		viewID, viewTitle, err := h.resolveViewByID("2", views)
-
-		require.NoError(t, err)
-		assert.Equal(t, int64(2), viewID)
-		assert.Equal(t, "List", viewTitle)
-	})
-
-	t.Run("view ID not found", func(t *testing.T) {
-		viewID, viewTitle, err := h.resolveViewByID("999", views)
-
-		require.Error(t, err)
-		assert.Equal(t, int64(0), viewID)
-		assert.Empty(t, viewTitle)
-		assert.Contains(t, err.Error(), "view with ID 999 not found")
-	})
-
-	t.Run("invalid view ID format", func(t *testing.T) {
-		viewID, viewTitle, err := h.resolveViewByID("invalid", views)
-
-		require.Error(t, err)
-		assert.Equal(t, int64(0), viewID)
-		assert.Empty(t, viewTitle)
-		assert.Contains(t, err.Error(), "view_id: must be a valid integer")
 	})
 }
 
@@ -417,160 +375,6 @@ func TestResolveViewByTitle(t *testing.T) {
 		assert.Equal(t, int64(0), viewID)
 		assert.Empty(t, viewTitle)
 		assert.Contains(t, err.Error(), "view with title \"Calendar\" not found in project 100")
-	})
-}
-
-func TestResolveProject(t *testing.T) {
-	cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	h := newTestHandlers()
-
-	t.Run("with project_id", func(t *testing.T) {
-		// Create a minimal client - will fail on network but validates parsing
-		input := ListTasksInput{
-			ProjectID: "123",
-		}
-
-		// Create a real client - it will fail on network but validates ID parsing
-		client, _ := createVikunjaClient()
-		project, projectID, err := h.resolveProject(context.Background(), client, input)
-
-		// Without a real server, this will fail on network, but let's check the ID was parsed
-		if err == nil {
-			assert.Equal(t, int64(123), projectID)
-			assert.Nil(t, project)
-		} else {
-			// Expected network error
-			assert.Error(t, err)
-		}
-	})
-
-	t.Run("with project_title requires client", func(t *testing.T) {
-		input := ListTasksInput{
-			ProjectTitle: "Inbox",
-		}
-
-		// Create a real client - it will fail on network
-		client, _ := createVikunjaClient()
-		_, _, err := h.resolveProject(context.Background(), client, input)
-
-		// Expected to fail without a real server
-		assert.Error(t, err)
-	})
-
-	t.Run("default project title requires client", func(t *testing.T) {
-		input := ListTasksInput{
-			// No project specified - should default to "Inbox"
-		}
-
-		// Create a real client - it will fail on network
-		client, _ := createVikunjaClient()
-		_, _, err := h.resolveProject(context.Background(), client, input)
-
-		// Expected to fail without a real server
-		assert.Error(t, err)
-	})
-}
-
-func TestResolveView(t *testing.T) {
-	cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	h := newTestHandlers()
-
-	t.Run("with view_id requires client", func(t *testing.T) {
-		input := ListTasksInput{
-			ProjectID: "123",
-			ViewID:    "456",
-		}
-
-		// Create a real client - it will fail on network
-		client, _ := createVikunjaClient()
-		// This will fail due to network when getting project views
-		_, _, err := h.resolveView(context.Background(), client, 123, input)
-
-		assert.Error(t, err)
-	})
-
-	t.Run("with view_title requires client", func(t *testing.T) {
-		input := ListTasksInput{
-			ProjectID: "123",
-			ViewTitle: "Kanban",
-		}
-
-		// Create a real client - it will fail on network
-		client, _ := createVikunjaClient()
-		// This will fail due to network when getting project views
-		_, _, err := h.resolveView(context.Background(), client, 123, input)
-
-		assert.Error(t, err)
-	})
-
-	t.Run("default view title requires client", func(t *testing.T) {
-		input := ListTasksInput{
-			ProjectID: "123",
-			// No view specified - should default to "Kanban"
-		}
-
-		// Create a real client - it will fail on network
-		client, _ := createVikunjaClient()
-		// This will try to find "Kanban" and fail due to network
-		_, _, err := h.resolveView(context.Background(), client, 123, input)
-
-		assert.Error(t, err)
-	})
-}
-
-func TestValidateBucketFiltering(t *testing.T) {
-	h := newTestHandlers()
-
-	t.Run("with bucket_id", func(t *testing.T) {
-		input := ListTasksInput{
-			BucketID: "123",
-		}
-
-		bucketID, bucketTitle, err := h.validateBucketFiltering(input)
-
-		require.NoError(t, err)
-		assert.NotNil(t, bucketID)
-		assert.Equal(t, int64(123), *bucketID)
-		assert.Empty(t, bucketTitle)
-	})
-
-	t.Run("with bucket_title", func(t *testing.T) {
-		input := ListTasksInput{
-			BucketTitle: "My Bucket",
-		}
-
-		bucketID, bucketTitle, err := h.validateBucketFiltering(input)
-
-		require.NoError(t, err)
-		assert.Nil(t, bucketID)
-		assert.Equal(t, "My Bucket", bucketTitle)
-	})
-
-	t.Run("no bucket filter", func(t *testing.T) {
-		input := ListTasksInput{}
-
-		bucketID, bucketTitle, err := h.validateBucketFiltering(input)
-
-		require.NoError(t, err)
-		assert.Nil(t, bucketID)
-		assert.Empty(t, bucketTitle)
-	})
-
-	t.Run("invalid bucket_id", func(t *testing.T) {
-		input := ListTasksInput{
-			BucketID: "invalid",
-		}
-
-		bucketID, bucketTitle, err := h.validateBucketFiltering(input)
-
-		require.Error(t, err)
-		assert.Nil(t, bucketID)
-		assert.Empty(t, bucketTitle)
-		assert.Contains(t, err.Error(), "bucket_id: must be a valid integer")
 	})
 }
 

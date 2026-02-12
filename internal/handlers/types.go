@@ -8,12 +8,9 @@ import (
 // Input/Output types for handlers
 
 type ListTasksInput struct {
-	ProjectID    string `json:"project_id,omitempty" jsonschema:"Optional project ID to filter tasks"`
-	ProjectTitle string `json:"project_title,omitempty" jsonschema:"Optional project title (defaults to 'Inbox')"`
-	ViewID       string `json:"view_id,omitempty" jsonschema:"Optional project view ID"`
-	ViewTitle    string `json:"view_title,omitempty" jsonschema:"Optional project view title (defaults to 'Kanban')"`
-	BucketID     string `json:"bucket_id,omitempty" jsonschema:"Optional bucket ID to filter tasks"`
-	BucketTitle  string `json:"bucket_title,omitempty" jsonschema:"Optional bucket title to filter tasks"`
+	Project string `json:"project,omitempty" jsonschema:"Optional project ID (integer) or title (string). Defaults to 'Inbox'"`
+	View    string `json:"view,omitempty" jsonschema:"Optional view ID (integer) or title (string). Defaults to 'Kanban'"`
+	Bucket  string `json:"bucket,omitempty" jsonschema:"Optional bucket ID (integer) or title (string)"`
 }
 
 // TaskSummary is a minimal version of a task for listing
@@ -58,8 +55,8 @@ type GetTaskOutput struct {
 }
 
 type ListBucketsInput struct {
-	ProjectID string `json:"project_id" jsonschema:"The ID of project"`
-	ViewID    string `json:"view_id" jsonschema:"The ID of project view"`
+	ProjectTitle string `json:"project_title,omitempty" jsonschema:"Optional project title to list buckets for (defaults to 'Inbox')"`
+	ViewTitle    string `json:"view_title,omitempty" jsonschema:"Optional view title to list buckets for (defaults to 'Kanban')"`
 }
 
 type ListBucketsOutput struct {

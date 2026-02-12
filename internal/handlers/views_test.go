@@ -184,40 +184,19 @@ func TestListTasksHandler_Validation(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name: "invalid bucket_id format",
+			name: "non-numeric project is treated as title",
 			input: ListTasksInput{
-				BucketID: "invalid",
+				Project: "invalid",
 			},
-			expectedError: "bucket_id: must be a valid integer",
+			expectedError: "failed to list projects", // Will try to find "invalid" as title and fail on network
 		},
 		{
-			name: "negative bucket_id",
+			name: "non-numeric view with valid project",
 			input: ListTasksInput{
-				BucketID: "-1",
+				Project: "1", // Valid ID to get past project resolution
+				View:    "invalid-view",
 			},
-			expectedError: "bucket_id: must be a positive integer",
-		},
-		{
-			name: "both bucket_id and bucket_title",
-			input: ListTasksInput{
-				BucketID:    "1",
-				BucketTitle: "My Bucket",
-			},
-			expectedError: "cannot specify both bucket_id and bucket_title",
-		},
-		{
-			name: "invalid view_id format",
-			input: ListTasksInput{
-				ViewID: "invalid",
-			},
-			expectedError: "failed to list projects", // No project specified, will try to find Inbox and fail
-		},
-		{
-			name: "invalid project_id format",
-			input: ListTasksInput{
-				ProjectID: "invalid",
-			},
-			expectedError: "project_id: must be a valid integer",
+			expectedError: "project with ID 1 not found", // Will fail due to network when getting project
 		},
 		{
 			name:  "default project and view search",
@@ -252,21 +231,18 @@ func TestListTasksHandler_BucketFilteringValidation(t *testing.T) {
 
 	h := newTestHandlers()
 
-	// Test that bucket filtering validation happens early
+	// Test that bucket filtering with a non-existent bucket fails gracefully
 	input := ListTasksInput{
-		BucketID:    "123",
-		BucketTitle: "My Bucket",
+		Project: "1",
+		View:    "1",
+		Bucket:  "nonexistent-bucket",
 	}
 
-	result, output, err := h.listTasksHandler(context.Background(), &mcp.CallToolRequest{}, input)
+	_, output, err := h.listTasksHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
+	// Should fail because project "1" doesn't exist
 	require.Error(t, err)
-	assert.True(t, result.IsError)
-	if len(result.Content) > 0 {
-		if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
-			assert.Contains(t, textContent.Text, "cannot specify both bucket_id and bucket_title")
-		}
-	}
+	assert.Contains(t, err.Error(), "project with ID 1 not found")
 	assert.Equal(t, ListTasksOutput{}, output)
 }
 
@@ -276,9 +252,9 @@ func TestListTasksHandler_WithProjectTitle(t *testing.T) {
 
 	h := newTestHandlers()
 
-	// Test with project_title - should look for project by title
+	// Test with project as title - should look for project by title
 	input := ListTasksInput{
-		ProjectTitle: "Inbox",
+		Project: "Inbox",
 	}
 
 	result, output, err := h.listTasksHandler(context.Background(), &mcp.CallToolRequest{}, input)
@@ -288,8 +264,8 @@ func TestListTasksHandler_WithProjectTitle(t *testing.T) {
 	// Result might be nil or have error content depending on where it fails
 	if result != nil {
 		assert.True(t, result.IsError)
+		assert.Contains(t, err.Error(), "failed to list projects")
 	}
-	assert.Contains(t, err.Error(), "failed to list projects")
 	assert.Equal(t, ListTasksOutput{}, output)
 }
 

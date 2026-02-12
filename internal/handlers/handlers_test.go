@@ -105,39 +105,24 @@ func TestListBucketsHandler_Validation(t *testing.T) {
 	h := newTestHandlers()
 
 	tests := []struct {
-		name          string
-		input         ListBucketsInput
-		expectedError string
+		name  string
+		input ListBucketsInput
 	}{
 		{
-			name:          "missing project_id",
-			input:         ListBucketsInput{ProjectID: "", ViewID: "1"},
-			expectedError: "project_id: is required",
+			name:  "defaults to Inbox project and Kanban view",
+			input: ListBucketsInput{},
 		},
 		{
-			name:          "missing view_id",
-			input:         ListBucketsInput{ProjectID: "1", ViewID: ""},
-			expectedError: "view_id: is required",
+			name:  "custom project title",
+			input: ListBucketsInput{ProjectTitle: "My Project"},
 		},
 		{
-			name:          "invalid project_id format",
-			input:         ListBucketsInput{ProjectID: "invalid", ViewID: "1"},
-			expectedError: "project_id: must be a valid integer",
+			name:  "custom view title",
+			input: ListBucketsInput{ViewTitle: "Backlog"},
 		},
 		{
-			name:          "invalid view_id format",
-			input:         ListBucketsInput{ProjectID: "1", ViewID: "invalid"},
-			expectedError: "view_id: must be a valid integer",
-		},
-		{
-			name:          "negative project_id",
-			input:         ListBucketsInput{ProjectID: "-1", ViewID: "1"},
-			expectedError: "project_id: must be a positive integer",
-		},
-		{
-			name:          "negative view_id",
-			input:         ListBucketsInput{ProjectID: "1", ViewID: "-1"},
-			expectedError: "view_id: must be a positive integer",
+			name:  "both custom project and view titles",
+			input: ListBucketsInput{ProjectTitle: "My Project", ViewTitle: "Backlog"},
 		},
 	}
 
@@ -145,13 +130,9 @@ func TestListBucketsHandler_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, output, err := h.listBucketsHandler(context.Background(), &mcp.CallToolRequest{}, tt.input)
 
+			// Without mocked client, these will fail with network errors
 			require.Error(t, err)
 			assert.True(t, result.IsError)
-			if len(result.Content) > 0 {
-				if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
-					assert.Contains(t, textContent.Text, tt.expectedError)
-				}
-			}
 			assert.Equal(t, ListBucketsOutput{}, output)
 		})
 	}

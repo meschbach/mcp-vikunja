@@ -320,8 +320,23 @@ func TestListBucketsHandler_Success(t *testing.T) {
 		{ID: 3, Title: "Done", ProjectViewID: 100, Position: 3, IsDoneBucket: true},
 	}
 
+	projectsResponse := []vikunja.Project{
+		{ID: 1, Title: "Inbox"},
+	}
+
+	viewsResponse := []vikunja.ProjectView{
+		{ID: 100, Title: "Kanban", ProjectID: 1, ViewKind: vikunja.ViewKindKanban},
+	}
+
 	cleanup := setupMockServer(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/projects/1/views/100/buckets") {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/projects"):
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(projectsResponse)
+		case strings.Contains(r.URL.Path, "/projects/1/views") && !strings.Contains(r.URL.Path, "/buckets"):
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(viewsResponse)
+		case strings.Contains(r.URL.Path, "/projects/1/views/100/buckets"):
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(bucketsResponse)
 		}
@@ -329,10 +344,7 @@ func TestListBucketsHandler_Success(t *testing.T) {
 	defer cleanup()
 
 	h := newTestHandlers()
-	input := ListBucketsInput{
-		ProjectID: "1",
-		ViewID:    "100",
-	}
+	input := ListBucketsInput{} // Uses defaults: Inbox project, Kanban view
 
 	result, output, err := h.listBucketsHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
@@ -347,17 +359,31 @@ func TestListBucketsHandler_Success(t *testing.T) {
 
 func TestListBucketsHandler_Errors(t *testing.T) {
 	t.Run("buckets not found", func(t *testing.T) {
+		projectsResponse := []vikunja.Project{
+			{ID: 1, Title: "Inbox"},
+		}
+
+		viewsResponse := []vikunja.ProjectView{
+			{ID: 100, Title: "Kanban", ProjectID: 1, ViewKind: vikunja.ViewKindKanban},
+		}
+
 		cleanup := setupMockServer(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(vikunja.ErrorResponse{Message: "View not found"})
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/projects"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(projectsResponse)
+			case strings.Contains(r.URL.Path, "/projects/1/views") && !strings.Contains(r.URL.Path, "/buckets"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			case strings.Contains(r.URL.Path, "/buckets"):
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(vikunja.ErrorResponse{Message: "View not found"})
+			}
 		})
 		defer cleanup()
 
 		h := newTestHandlers()
-		input := ListBucketsInput{
-			ProjectID: "1",
-			ViewID:    "999",
-		}
+		input := ListBucketsInput{ViewTitle: "Kanban"}
 
 		result, output, err := h.listBucketsHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
@@ -368,17 +394,31 @@ func TestListBucketsHandler_Errors(t *testing.T) {
 	})
 
 	t.Run("empty buckets list", func(t *testing.T) {
+		projectsResponse := []vikunja.Project{
+			{ID: 1, Title: "Inbox"},
+		}
+
+		viewsResponse := []vikunja.ProjectView{
+			{ID: 100, Title: "Kanban", ProjectID: 1, ViewKind: vikunja.ViewKindKanban},
+		}
+
 		cleanup := setupMockServer(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode([]vikunja.Bucket{})
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/projects"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(projectsResponse)
+			case strings.Contains(r.URL.Path, "/projects/1/views") && !strings.Contains(r.URL.Path, "/buckets"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			case strings.Contains(r.URL.Path, "/buckets"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode([]vikunja.Bucket{})
+			}
 		})
 		defer cleanup()
 
 		h := newTestHandlers()
-		input := ListBucketsInput{
-			ProjectID: "1",
-			ViewID:    "100",
-		}
+		input := ListBucketsInput{}
 
 		result, output, err := h.listBucketsHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
@@ -467,13 +507,28 @@ func TestGetTaskHandler_EdgeCases(t *testing.T) {
 }
 
 func TestListBucketsHandler_DifferentFormats(t *testing.T) {
+	projectsResponse := []vikunja.Project{
+		{ID: 1, Title: "Inbox"},
+	}
+
+	viewsResponse := []vikunja.ProjectView{
+		{ID: 100, Title: "Kanban", ProjectID: 1, ViewKind: vikunja.ViewKindKanban},
+	}
+
 	t.Run("with JSON formatter", func(t *testing.T) {
 		bucketsResponse := []vikunja.Bucket{
 			{ID: 1, Title: "Todo", ProjectViewID: 100},
 		}
 
 		cleanup := setupMockServer(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "/projects/1/views/100/buckets") {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/projects"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(projectsResponse)
+			case strings.Contains(r.URL.Path, "/projects/1/views") && !strings.Contains(r.URL.Path, "/buckets"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			case strings.Contains(r.URL.Path, "/projects/1/views/100/buckets"):
 				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(bucketsResponse)
 			}
@@ -486,10 +541,7 @@ func TestListBucketsHandler_DifferentFormats(t *testing.T) {
 			OutputFormatter: vikunja.GetFormatter(vikunja.OutputFormatJSON),
 		}
 		h := NewHandlers(deps)
-		input := ListBucketsInput{
-			ProjectID: "1",
-			ViewID:    "100",
-		}
+		input := ListBucketsInput{}
 
 		result, _, err := h.listBucketsHandler(context.Background(), &mcp.CallToolRequest{}, input)
 
@@ -510,7 +562,14 @@ func TestListBucketsHandler_DifferentFormats(t *testing.T) {
 		}
 
 		cleanup := setupMockServer(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "/projects/1/views/100/buckets") {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/projects"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(projectsResponse)
+			case strings.Contains(r.URL.Path, "/projects/1/views") && !strings.Contains(r.URL.Path, "/buckets"):
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(viewsResponse)
+			case strings.Contains(r.URL.Path, "/projects/1/views/100/buckets"):
 				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(bucketsResponse)
 			}
@@ -523,10 +582,7 @@ func TestListBucketsHandler_DifferentFormats(t *testing.T) {
 			OutputFormatter: vikunja.GetFormatter(vikunja.OutputFormatMarkdown),
 		}
 		h := NewHandlers(deps)
-		input := ListBucketsInput{
-			ProjectID: "1",
-			ViewID:    "100",
-		}
+		input := ListBucketsInput{}
 
 		result, _, err := h.listBucketsHandler(context.Background(), &mcp.CallToolRequest{}, input)
 

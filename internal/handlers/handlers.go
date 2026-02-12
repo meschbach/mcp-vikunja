@@ -46,7 +46,7 @@ func Register(s *mcp.Server, cfg *config.Config) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_tasks",
-		Description: "List tasks from Vikunja filtering by criteria",
+		Description: "List tasks from Vikunja filtering by criteria. Use 'project', 'view', and 'bucket' parameters with either ID (integer) or title (string). Defaults: project=Inbox, view=Kanban",
 	}, handlers.listTasksHandler)
 
 	mcp.AddTool(s, &mcp.Tool{
