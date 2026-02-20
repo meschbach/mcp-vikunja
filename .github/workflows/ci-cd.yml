@@ -133,7 +133,8 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
-
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
       - name: Build mcp-vikunja
         run: go build -o bin/mcp-vikunja ./cmd/mcp-vikunja
 
