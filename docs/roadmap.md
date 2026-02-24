@@ -4,6 +4,8 @@
 - Better testing
   - Boots up Vikjuna + dependencies in `docker-compose`
   - Scripted setup
+- CD Pipeline:
+  - Better Go version management.  Preferably 1, hard limit of 2 places for version management. 
 - Able to create a task
 
 ## v0.2.0: URIs
