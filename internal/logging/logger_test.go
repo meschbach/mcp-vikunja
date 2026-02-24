@@ -240,6 +240,6 @@ func TestNewLogger_UnsupportedFormat(t *testing.T) {
 
 	// Should default to JSON format
 	logger, err := NewLogger(config)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, logger)
 }
