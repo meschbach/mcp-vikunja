@@ -2,6 +2,17 @@
 # Ensures code quality standards with fast developer feedback
 
 repos:
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        files: '\.md$|\.hcl$'
+        pass_filenames: false
+        description: Spell check Markdown and HCL files
+        args:
+          # excluded as it handles misspellings
+          - "--exclude-file"
+          - "api/vikunja.yaml"
   - repo: local
     hooks:
       # Phase 1: Fast Local Checks

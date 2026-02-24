@@ -40,7 +40,7 @@ type ViewTasksSummary struct {
 }
 
 type ListTasksOutput struct {
-	Project *Project         `json:"project,omitempty" jsonschema:"Project hte tasks are related to"`
+	Project *Project         `json:"project,omitempty" jsonschema:"Project the tasks are related to"`
 	View    ViewTasksSummary `json:"view" jsonschema:"tasks associated with this view"`
 }
 
