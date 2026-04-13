@@ -173,19 +173,105 @@ func findProjectByIDOrTitle(ctx context.Context, client *vikunja.Client, project
 		return nil, fmt.Errorf("failed to list projects: %w", err)
 	}
 
-	var projectTitles []string
+	var matches []Project
 	for _, p := range projects {
-		projectTitles = append(projectTitles, p.Title)
 		if p.Title == projectTitle {
-			return &Project{
+			matches = append(matches, Project{
 				ID:    p.ID,
 				Title: p.Title,
 				URI:   fmt.Sprintf("vikunja://project/%d", p.ID),
-			}, nil
+			})
 		}
 	}
 
-	return nil, enhancedProjectNotFoundError(projectTitle, projectTitles)
+	if len(matches) == 0 {
+		var projectTitles []string
+		for _, p := range projects {
+			projectTitles = append(projectTitles, p.Title)
+		}
+		return nil, enhancedProjectNotFoundError(projectTitle, projectTitles)
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("multiple projects found with title %q, please use project ID", projectTitle)
+	}
+	return &matches[0], nil
+}
+
+// resolveProject resolves a project by a single identifier (ID or title).
+// It tries numeric ID first; if that fails, treats it as a title.
+func resolveProject(ctx context.Context, client *vikunja.Client, identifier string) (*Project, error) {
+	if identifier == "" {
+		return nil, fmt.Errorf("project identifier is required")
+	}
+	// Try as numeric ID first
+	if _, err := strconv.ParseInt(identifier, 10, 64); err == nil {
+		return findProjectByIDOrTitle(ctx, client, identifier, "")
+	}
+	// Otherwise treat as title
+	return findProjectByIDOrTitle(ctx, client, "", identifier)
+}
+
+// findKanbanView finds the Kanban view for a project. Returns error if not found.
+func findKanbanView(ctx context.Context, client *vikunja.Client, projectID int64) (*vikunja.ProjectView, error) {
+	views, err := client.GetProjectViews(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project views: %w", err)
+	}
+
+	for _, view := range views {
+		if view.ViewKind == vikunja.ViewKindKanban {
+			return &view, nil
+		}
+	}
+
+	return nil, fmt.Errorf("kanban view not found in project %d. Project must have a Kanban view to use buckets", projectID)
+}
+
+// findBucketByIDOrTitle finds a bucket by ID (if numeric) or title (via Kanban view)
+func findBucketByIDOrTitle(ctx context.Context, client *vikunja.Client, projectID int64, bucketInput string) (*int64, error) {
+	// Try to parse as ID first
+	if id, err := strconv.ParseInt(bucketInput, 10, 64); err == nil && id > 0 {
+		return &id, nil
+	}
+
+	// Must resolve by title - need Kanban view
+	kanbanView, err := findKanbanView(ctx, client, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get buckets for the Kanban view
+	buckets, err := client.GetViewBuckets(ctx, projectID, kanbanView.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get buckets for kanban view: %w", err)
+	}
+
+	// Search for exact title match (case-sensitive)
+	var matches []vikunja.Bucket
+	for _, b := range buckets {
+		if b.Title == bucketInput {
+			matches = append(matches, b)
+		}
+	}
+
+	if len(matches) == 0 {
+		// Extract bucket names for error message
+		bucketNames := make([]string, len(buckets))
+		for i, b := range buckets {
+			bucketNames[i] = b.Title
+		}
+		// Get project title for better error message
+		project, err := client.GetProject(ctx, projectID)
+		if err != nil {
+			project = &vikunja.Project{Title: fmt.Sprintf("Project %d", projectID)}
+		}
+		return nil, enhancedBucketNotFoundError(bucketInput, project.Title, bucketNames)
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("multiple buckets found with title %q in Kanban view, please use bucket ID", bucketInput)
+	}
+
+	return &matches[0].ID, nil
 }
 
 // findViewByName finds a view by name within a project's views
@@ -216,6 +302,21 @@ func enhancedProjectNotFoundError(title string, availableProjects []string) erro
 		}
 	}
 	return fmt.Errorf("project with title %q not found.%s Try: list_projects() to see all available projects", title, suggestion)
+}
+
+// enhancedBucketNotFoundError provides contextual error message with available buckets in the Kanban view
+func enhancedBucketNotFoundError(bucket string, projectTitle string, availableBuckets []string) error {
+	var suggestion string
+	if len(availableBuckets) > 0 {
+		if len(availableBuckets) <= 3 {
+			suggestion = fmt.Sprintf(" Available buckets in project '%s': %v", projectTitle, availableBuckets)
+		} else {
+			suggestion = fmt.Sprintf(" Available buckets in project '%s' include: %s, %s, and %d others",
+				projectTitle, availableBuckets[0], availableBuckets[1], len(availableBuckets)-2)
+		}
+	}
+	return fmt.Errorf("bucket %q not found in Kanban view of project %q.%s Try: list_buckets(project_title=%q) to see available buckets",
+		bucket, projectTitle, suggestion, projectTitle)
 }
 
 // enhancedViewNotFoundError provides contextual error message with available options

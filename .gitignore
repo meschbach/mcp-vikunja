@@ -3,3 +3,4 @@ bin/
 /mcp-vikunja
 /vikunja-cli
 release/
+.env

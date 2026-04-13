@@ -1,17 +1,25 @@
-.PHONY: build build-cli build-mcp build-all test clean lint fmt run download-spec
+.PHONY: build build-cli build-mcp build-all test clean lint fmt run download-spec dev dev-up dev-down dev-clean setup-user release
 
 VIKUNJA_SPEC_URL := https://raw.githubusercontent.com/go-vikunja/vikunja/main/pkg/swagger/swagger.yaml
 
-# Build the application
-build: build-cli build-mcp
+# Detect platform for release binaries
+DETECTED_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+ifeq ($(shell uname -m),x86_64)
+DETECTED_ARCH := amd64
+else
+DETECTED_ARCH := arm64
+endif
+RELEASE_DIR := release/$(DETECTED_ARCH)_$(DETECTED_OS)
 
-# Build CLI tool
-build-cli:
-	go build -o bin/vikunja-cli ./cmd/vikunja-cli
+# Build CLI tool (from release binaries)
+build-cli: release
+	@mkdir -p bin
+	cp $(RELEASE_DIR)/vikunja-cli bin/
 
-# Build MCP server
-build-mcp:
-	go build -o bin/mcp-vikunja ./cmd/mcp-vikunja
+# Build MCP server (from release binaries)
+build-mcp: release
+	@mkdir -p bin
+	cp $(RELEASE_DIR)/mcp-vikunja bin/
 
 # Build both binaries
 build-all: build-cli build-mcp
@@ -36,7 +44,7 @@ test-cover:
 
 # Clean build artifacts
 clean:
-	rm -rf bin/ coverage.out coverage.html
+	rm -rf bin/ coverage.out coverage.html release/
 
 # Format code
 fmt:
@@ -57,3 +65,34 @@ tidy:
 # Vendor dependencies
 vendor:
 	go mod vendor
+
+# Development targets
+build: release
+	@echo "Binaries built in release/ directory"
+
+release:
+	@echo "Building release binaries..."
+	./release.sh
+
+dev-up: release
+	@echo "Starting development services..."
+	docker-compose up -d
+
+dev-down:
+	@echo "Stopping development services..."
+	docker-compose down
+
+dev-clean:
+	@echo "Stopping services and removing volumes..."
+	docker-compose down -v
+
+setup-user:
+	@echo "Setting up Vikunja user..."
+	@if [ ! -f .env ]; then cp .env.example .env; fi
+	./scripts/setup-vikunja.sh
+
+dev: release dev-up setup-user
+	@echo ""
+	@echo "Development environment ready!"
+	@echo "Vikunja: http://localhost:3456"
+	@echo "MCP Server: http://localhost:8080"

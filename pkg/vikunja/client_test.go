@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,6 +83,7 @@ func mockErrorResponse() ErrorResponse {
 
 // TestNewClient tests the client initialization
 func TestNewClient(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		host     string
@@ -104,6 +106,7 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			client, err := NewClient(tt.host, tt.token, tt.insecure)
 			require.NoError(t, err)
 			assert.NotNil(t, client)
@@ -115,7 +118,9 @@ func TestNewClient(t *testing.T) {
 
 // TestGetProjects tests the GetProjects method
 func TestGetProjects(t *testing.T) {
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		expectedProjects := mockProjectsResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/projects", r.URL.Path)
@@ -132,6 +137,7 @@ func TestGetProjects(t *testing.T) {
 	})
 
 	t.Run("empty response", func(t *testing.T) {
+		t.Parallel()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("[]"))
@@ -144,6 +150,7 @@ func TestGetProjects(t *testing.T) {
 	})
 
 	t.Run("unauthorized", func(t *testing.T) {
+		t.Parallel()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(mockErrorResponse())
@@ -157,6 +164,7 @@ func TestGetProjects(t *testing.T) {
 	})
 
 	t.Run("server error", func(t *testing.T) {
+		t.Parallel()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(mockErrorResponse())
@@ -171,7 +179,9 @@ func TestGetProjects(t *testing.T) {
 
 // TestGetProject tests the GetProject method
 func TestGetProject(t *testing.T) {
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		expectedProject := mockProjectResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/projects/1", r.URL.Path)
@@ -187,6 +197,7 @@ func TestGetProject(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(mockErrorResponse())
@@ -201,7 +212,9 @@ func TestGetProject(t *testing.T) {
 
 // TestGetTasks tests the GetTasks method
 func TestGetTasks(t *testing.T) {
+	t.Parallel()
 	t.Run("with project ID", func(t *testing.T) {
+		t.Parallel()
 		expectedTasks := mockTasksResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
@@ -218,6 +231,7 @@ func TestGetTasks(t *testing.T) {
 	})
 
 	t.Run("without project ID", func(t *testing.T) {
+		t.Parallel()
 		expectedTasks := mockTasksResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/tasks", r.URL.Path)
@@ -232,6 +246,7 @@ func TestGetTasks(t *testing.T) {
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
+		t.Parallel()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("invalid json"))
@@ -246,7 +261,9 @@ func TestGetTasks(t *testing.T) {
 
 // TestGetTask tests the GetTask method
 func TestGetTask(t *testing.T) {
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		expectedTask := mockTaskResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/tasks/1", r.URL.Path)
@@ -265,7 +282,9 @@ func TestGetTask(t *testing.T) {
 
 // TestGetProjectViews tests the GetProjectViews method
 func TestGetProjectViews(t *testing.T) {
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		expectedViews := mockViewsResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/projects/1/views", r.URL.Path)
@@ -281,6 +300,7 @@ func TestGetProjectViews(t *testing.T) {
 	})
 
 	t.Run("empty views", func(t *testing.T) {
+		t.Parallel()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("[]"))
@@ -295,7 +315,9 @@ func TestGetProjectViews(t *testing.T) {
 
 // TestGetViewBuckets tests the GetViewBuckets method
 func TestGetViewBuckets(t *testing.T) {
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		expectedBuckets := mockBucketsResponse()
 		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/api/v1/projects/1/views/1/buckets", r.URL.Path)
@@ -396,6 +418,126 @@ func TestMoveTaskToBucket(t *testing.T) {
 		result, err := client.MoveTaskToBucket(context.Background(), 1, 2, 3, 10)
 		assert.Error(t, err)
 		assert.Nil(t, result)
+	})
+}
+
+// mockCreatedTaskResponse returns a sample created task response
+func mockCreatedTaskResponse() Task {
+	return Task{
+		ID:          123,
+		Title:       "New Task",
+		Description: "Task description",
+		ProjectID:   1,
+		Done:        false,
+		DueDate:     time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC),
+		Created:     time.Now(),
+		Updated:     time.Now(),
+		Buckets:     []Bucket{},
+		Position:    1,
+	}
+}
+
+// TestCreateTask tests the CreateTask method
+func TestCreateTask(t *testing.T) {
+	t.Run("success minimal", func(t *testing.T) {
+		expectedTask := mockCreatedTaskResponse()
+		expectedTask.Description = ""
+		expectedTask.DueDate = time.Time{}
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
+			assert.Equal(t, "POST", r.Method)
+			// Verify request body contains title and project_id
+			var reqBody map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&reqBody)
+			assert.Equal(t, "Test Task", reqBody["title"])
+			assert.Equal(t, float64(1), reqBody["project_id"])
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(expectedTask)
+		})
+		defer ts.Close()
+
+		task, err := client.CreateTask(context.Background(), "Test Task", 1, "", nil, time.Time{})
+		require.NoError(t, err)
+		assert.NotNil(t, task)
+		assert.Equal(t, int64(123), task.ID)
+		assert.Equal(t, "New Task", task.Title)
+	})
+
+	t.Run("success with all fields", func(t *testing.T) {
+		due := time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC)
+		bucket := int64(5)
+		expectedTask := mockCreatedTaskResponse()
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
+			assert.Equal(t, "POST", r.Method)
+			var reqBody map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&reqBody)
+			assert.Equal(t, "Full Task", reqBody["title"])
+			assert.Equal(t, float64(1), reqBody["project_id"])
+			assert.Equal(t, "Full description", reqBody["description"])
+			assert.Equal(t, float64(5), reqBody["bucket_id"])
+			assert.Equal(t, "2024-12-25", reqBody["due_date"])
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(expectedTask)
+		})
+		defer ts.Close()
+
+		task, err := client.CreateTask(context.Background(), "Full Task", 1, "Full description", &bucket, due)
+		require.NoError(t, err)
+		assert.NotNil(t, task)
+		assert.Equal(t, int64(123), task.ID)
+	})
+
+	t.Run("bad request", func(t *testing.T) {
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(mockErrorResponse())
+		})
+		defer ts.Close()
+
+		task, err := client.CreateTask(context.Background(), "Task", 1, "", nil, time.Time{})
+		assert.Error(t, err)
+		assert.Nil(t, task)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(mockErrorResponse())
+		})
+		defer ts.Close()
+
+		task, err := client.CreateTask(context.Background(), "Task", 1, "", nil, time.Time{})
+		assert.Error(t, err)
+		assert.Nil(t, task)
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(mockErrorResponse())
+		})
+		defer ts.Close()
+
+		task, err := client.CreateTask(context.Background(), "Task", 1, "", nil, time.Time{})
+		assert.Error(t, err)
+		assert.Nil(t, task)
+	})
+
+	t.Run("invalid JSON response", func(t *testing.T) {
+		ts, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/api/v1/projects/1/tasks", r.URL.Path)
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte("invalid json"))
+		})
+		defer ts.Close()
+
+		task, err := client.CreateTask(context.Background(), "Task", 1, "", nil, time.Time{})
+		assert.Error(t, err)
+		assert.Nil(t, task)
 	})
 }
 

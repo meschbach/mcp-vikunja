@@ -131,7 +131,7 @@ func TestHTTPServer_Run_ContextCancellation(t *testing.T) {
 		config: cfg,
 	}
 
-	// Create a context that will be cancelled quickly
+	// Create a context that will be canceled quickly
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 

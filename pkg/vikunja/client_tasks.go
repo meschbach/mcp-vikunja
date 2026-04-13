@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // GetTasks retrieves tasks, optionally filtered by project ID
@@ -17,7 +18,7 @@ func (c *Client) GetTasks(ctx context.Context, projectID int64) ([]Task, error) 
 		url = fmt.Sprintf("%s/tasks?expand=buckets", c.baseURL)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -80,18 +81,19 @@ func (c *Client) GetTaskBuckets(ctx context.Context, taskID int64) (*TaskBucketI
 		}
 
 		for _, bucket := range task.Buckets {
-			if bucket.ProjectViewID == view.ID {
-				bID := bucket.ID
-				bTitle := bucket.Title
-				viewInfo.BucketID = &bID
-				viewInfo.BucketTitle = &bTitle
-				viewInfo.Position = bucket.Position
-				// Determine if this is the done bucket for the view
-				if view.DoneBucketID == bucket.ID {
-					viewInfo.IsDoneBucket = true
-				}
-				break
+			if bucket.ProjectViewID != view.ID {
+				continue
 			}
+			bID := bucket.ID
+			bTitle := bucket.Title
+			viewInfo.BucketID = &bID
+			viewInfo.BucketTitle = &bTitle
+			viewInfo.Position = bucket.Position
+			// Determine if this is the done bucket for the view
+			if view.DoneBucketID == bucket.ID {
+				viewInfo.IsDoneBucket = true
+			}
+			break
 		}
 
 		taskViews = append(taskViews, viewInfo)
@@ -138,4 +140,59 @@ func (c *Client) MoveTaskToBucket(ctx context.Context, projectID, viewID, bucket
 	}
 
 	return &taskBucket, nil
+}
+
+// buildTaskRequestBody constructs the JSON body for creating a task.
+func buildTaskRequestBody(title string, projectID int64, description string, bucketID *int64, dueDate time.Time) map[string]interface{} {
+	reqBody := map[string]interface{}{
+		"title":      title,
+		"project_id": projectID,
+	}
+	if description != "" {
+		reqBody["description"] = description
+	}
+	if bucketID != nil {
+		reqBody["bucket_id"] = *bucketID
+	}
+	if !dueDate.IsZero() {
+		reqBody["due_date"] = dueDate.Format("2006-01-02")
+	}
+	return reqBody
+}
+
+// CreateTask creates a new task in a project
+func (c *Client) CreateTask(ctx context.Context, title string, projectID int64, description string, bucketID *int64, dueDate time.Time) (*Task, error) {
+	url := fmt.Sprintf("%s/projects/%d/tasks", c.baseURL, projectID)
+
+	// Build request body
+	reqBody := buildTaskRequestBody(title, projectID, description, bucketID, dueDate)
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, c.handleErrorResponse(resp)
+	}
+
+	var task Task
+	if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &task, nil
 }

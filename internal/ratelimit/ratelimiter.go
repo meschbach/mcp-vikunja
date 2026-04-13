@@ -254,7 +254,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetTime.Unix(), 10))
 			w.WriteHeader(http.StatusTooManyRequests)
 
-			fmt.Fprintf(w, `{"error": "rate limit exceeded", "limit": %d, "remaining": %d, "reset_time": "%s"}`,
+			_, _ = fmt.Fprintf(w, `{"error": "rate limit exceeded", "limit": %d, "remaining": %d, "reset_time": "%s"}`,
 				limit, remaining, resetTime.Format(time.RFC3339))
 			return
 		}

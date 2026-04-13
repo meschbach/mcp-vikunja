@@ -73,7 +73,8 @@ type ListProjectsOutput struct {
 type CreateTaskInput struct {
 	Title       string `json:"title" jsonschema:"The title of task"`
 	Description string `json:"description,omitempty" jsonschema:"Optional task description"`
-	ProjectID   string `json:"project_id" jsonschema:"The project ID to create task in"`
+	ProjectID   string `json:"project_id" jsonschema:"Project ID (numeric) or project title to create task in"`
+	BucketID    string `json:"bucket_id,omitempty" jsonschema:"Optional bucket ID (numeric) or bucket title to assign task to. Bucket must be in the project's Kanban view."`
 }
 
 type CreateTaskOutput struct {

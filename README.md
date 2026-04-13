@@ -156,7 +156,109 @@ The server provides the following MCP tools:
 - `get_task` - Get detailed task information including bucket placement
 - `list_buckets` - List all buckets in a project view (defaults to Inbox project and Kanban view)
 - `list_projects` - List all available projects
-- `create_task` - Create new tasks (coming soon)
+- `create_task` - Create new tasks with title, description, project, bucket, and due date
+
+## Standalone CLI Tool
+
+In addition to the MCP server, this repository includes a standalone CLI tool for direct Vikunja interaction:
+
+### Installation
+
+```bash
+# Build the CLI tool
+go build -o bin/vikunja-cli ./cmd/vikunja-cli
+
+# Or install directly
+go install ./cmd/vikunja-cli
+```
+
+### Configuration
+
+The CLI tool uses the same environment variables as the MCP server:
+
+- `VIKUNJA_HOST` - Your Vikunja instance URL (required)
+- `VIKUNJA_TOKEN` - Your Vikunja API token (required)
+- `VIKUNJA_INSECURE` - Skip TLS verification (optional, default: false)
+
+Or use command-line flags to override environment variables.
+
+### Available Commands
+
+```bash
+# Show help
+vikunja-cli --help
+
+# List all tasks (optionally filtered by project)
+vikunja-cli tasks list [--project <id>]
+
+# Get detailed task information
+vikunja-cli tasks get <task-id>
+
+# Create a new task
+vikunja-cli tasks create <title> [description] [flags]
+```
+
+### Creating Tasks
+
+The `tasks create` command creates new tasks with flexible project and bucket assignment:
+
+```bash
+# Create task with title only (uses default "Inbox" project)
+vikunja-cli tasks create "My new task"
+
+# Create task with title and description
+vikunja-cli tasks create "My task" "Detailed description"
+
+# Create task in specific project by ID
+vikunja-cli tasks create "Task" --project 123
+
+# Create task in project by title
+vikunja-cli tasks create "Task" --project "Work Projects"
+
+# Create task in specific bucket by ID
+vikunja-cli tasks create "Task" --project 123 --bucket 456
+
+# Create task in bucket by title (requires project to have Kanban view)
+vikunja-cli tasks create "Task" --project 123 --bucket "In Progress"
+
+# Use default Inbox with bucket by title
+vikunja-cli tasks create "Task" --bucket "In Progress"
+```
+
+### Output Formatting
+
+The CLI tool supports multiple output formats:
+
+```bash
+# Table output (default)
+vikunja-cli tasks create "Task" --project 123
+
+# JSON output
+vikunja-cli tasks create "Task" --project 123 --json
+
+# Markdown output
+vikunja-cli tasks create "Task" --project 123 --markdown
+
+# Write output to file
+vikunja-cli tasks create "Task" --project 123 --output task.json
+
+# Disable colors
+vikunja-cli tasks create "Task" --no-color
+
+# Verbose logging
+vikunja-cli tasks create "Task" --verbose
+```
+
+### Common Flags
+
+- `--host` / `-h` - Vikunja instance hostname (overrides VIKUNJA_HOST)
+- `--token` / `-t` - API token (overrides VIKUNJA_TOKEN)
+- `--insecure` / `-k` - Skip TLS certificate verification
+- `--json` / `-j` - Output as JSON
+- `--markdown` / `-m` - Output as Markdown
+- `--output` / `-o` - Write output to file
+- `--verbose` / `-v` - Enable debug logging
+- `--no-color` - Disable colored output
 
 ## Example Usage
 
@@ -204,6 +306,32 @@ docker run -p 8080:8080 \
 
 See [AGENTS.md](AGENTS.md) for coding guidelines and commands.
 
+### create_task Tool Usage
+
+```bash
+# Using stdio transport with create_task
+echo '{"title": "New task", "project_id": 1}' | ./bin/mcp-vikunja stdio
+
+# With all optional fields
+echo '{"title": "Complex task", "project_id": 1, "description": "Detailed description", "bucket_id": 5, "due_date": "2025-12-31T23:59:59Z"}' | ./bin/mcp-vikunja stdio
+
+# Using HTTP transport
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "create_task",
+      "arguments": {
+        "title": "New task from HTTP",
+        "project_id": 1
+      }
+    }
+  }'
+```
+
 ### Testing
 
 ```bash
@@ -219,6 +347,7 @@ go test -tags=integration ./test/integration/...
 
 ## Documentation
 
+- [Docker Compose Guide](docs/docker-compose.md) - Local development setup with Docker
 - [Transport Configuration Guide](docs/transport-configuration.md) - Detailed transport setup and deployment options
 - [AGENTS.md](AGENTS.md) - Development guidelines and project standards
 
