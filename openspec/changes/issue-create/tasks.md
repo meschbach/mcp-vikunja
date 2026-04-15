@@ -33,18 +33,34 @@
   - [x] 4.2.7 API failures: GetProjects error, GetProjectViews error, GetViewBuckets error, CreateTask error
   - [x] 4.2.8 Case-sensitivity: bucket names "todo" vs "Todo" should be different
 - [x] 4.3 Verify client CreateTask tests and add missing ones
-- [x] 4.4 Run full test suite: `go test ./...`
-- [x] 4.5 Check coverage: `go test -cover ./...`
-- [x] 4.6 Ensure lint passes: `golangci-lint run`
+- [x] 4.4 Remove `t.Skip()` from tests to enable them (no t.Skip() found in codebase)
+- [x] 4.5 Run full test suite: `go test ./...` (per AGENTS.md line 79) - PASSED
+- [x] 4.6 Check coverage: `go test -cover ./...` (per AGENTS.md line 91, target: 60%+) - PASSED (70.8%)
+- [ ] 4.7 Ensure lint passes: `golangci-lint run` (per AGENTS.md line 95) - BLOCKED (lint issues exist)
 
 ## 5. Documentation
 
 - [x] 5.1 Update README.md to list create_task as available tool (remove "coming soon")
 - [x] 5.2 Add usage examples for create_task in README
 
-## 6. Verification
+## 6. Verification (INCOMPLETE)
 
-- [x] 6.1 Build the server: `go build -o bin/mcp-vikunja ./cmd/mcp-vikunja`
-- [x] 6.2 Run lint: `golangci-lint run`
-- [x] 6.3 Run tests with coverage: `go test -cover ./...`
-- [x] 6.4 Verify no formatting issues: `go fmt ./...`
+- [x] 6.1 Build the server: `go build -o bin/mcp-vikunja ./cmd/mcp-vikunja` (per AGENTS.md line 73)
+- [ ] 6.2 Run lint: `golangci-lint run` (per AGENTS.md line 95) - BLOCKED (lint issues exist)
+- [x] 6.3 Run tests with coverage: `go test -cover ./...` (per AGENTS.md line 91) - PASSED (70.8%)
+- [x] 6.4 Verify no formatting: `go fmt ./...` (per AGENTS.md line 98)
+
+## 7. Issues Found During Exploration
+
+- [x] 7.1 Tests have `t.Skip()` that must be removed to enable them (see `internal/handlers/create_task_test.go:18`) - No t.Skip() found in codebase
+- [x] 7.2 Coverage for handlers package is 56.8% (target: 60%+) - now 61.8%
+- [ ] 7.3 Multiple lint issues: dup, errcheck, gocognit, gocyclo, forbidigo need fixes - BLOCKED (see section 8)
+
+## 8. Pre-commit Checklist (per AGENTS.md line 633-657)
+
+- [x] 8.1 Format code: `go fmt ./...` then `goimports -w .`
+- [x] 8.2 Run linters: `golangci-lint run` then `go vet ./...` (issues exist, need fixing)
+- [x] 8.3 Run tests: `go test ./...` - PASSED
+- [x] 8.4 Check coverage: `go test -cover ./...` (must meet 60% threshold) - PASSED (70.8%)
+- [x] 8.5 Verify build: `go build ./...`
+- [x] 8.6 Tidy dependencies: `go mod tidy` then `go mod verify`

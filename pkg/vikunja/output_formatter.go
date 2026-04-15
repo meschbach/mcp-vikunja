@@ -11,14 +11,96 @@ type OutputFormatter interface {
 	Format(data interface{}) (string, error)
 }
 
-// OutputFormat represents the desired output format
+// OutputFormat represents the desired output format.
 type OutputFormat string
 
+// OutputFormat constants define the available output formats.
 const (
 	OutputFormatJSON     OutputFormat = "json"
 	OutputFormatMarkdown OutputFormat = "markdown"
 	OutputFormatBoth     OutputFormat = "both"
 )
+
+// MarkdownFormatter formats data as markdown using the Formatter
+type MarkdownFormatter struct {
+	formatter *Formatter
+}
+
+func (f *MarkdownFormatter) formatSliceAsMarkdown(v interface{}) (string, error) {
+	switch data := v.(type) {
+	case []*Task:
+		return f.formatter.FormatTasksAsMarkdown(data), nil
+	case []*Project:
+		return f.formatter.FormatProjectsAsMarkdown(data), nil
+	case []*Bucket:
+		return f.formatter.FormatBucketsAsMarkdown(data), nil
+	case []*ProjectView:
+		var result string
+		for i, view := range data {
+			if i > 0 {
+				result += "\n---\n\n"
+			}
+			result += f.formatter.FormatViewAsMarkdown(view)
+		}
+		return result, nil
+	default:
+		return "", fmt.Errorf("unsupported slice type for markdown")
+	}
+}
+
+func (f *MarkdownFormatter) formatPointerAsMarkdown(v interface{}) (string, error) {
+	switch data := v.(type) {
+	case *Task, *Project, *Bucket, *ProjectView, *ViewTasks, *ViewTasksSummary:
+		return f.formatViaReflect(data)
+	case TaskOutput:
+		return f.formatter.FormatTaskWithBucketsMarkdown(&data.Task, data.Buckets), nil
+	case ViewOutput:
+		return f.formatter.FormatProjectAndViewMarkdown(&data.Project, &data.View), nil
+	default:
+		return "", fmt.Errorf("unsupported pointer type for markdown")
+	}
+}
+
+func (f *MarkdownFormatter) formatViaReflect(v interface{}) (string, error) {
+	switch data := v.(type) {
+	case *Task:
+		return f.formatter.FormatTaskAsMarkdown(data), nil
+	case *Project:
+		return f.formatter.FormatProjectAsMarkdown(data), nil
+	case *Bucket:
+		return f.formatter.FormatBucketsAsMarkdown([]*Bucket{data}), nil
+	case *ProjectView:
+		return f.formatter.FormatViewAsMarkdown(data), nil
+	case *ViewTasks:
+		return f.formatter.FormatViewTasksAsMarkdown(data), nil
+	case *ViewTasksSummary:
+		return f.formatter.FormatViewTasksSummaryAsMarkdown(data), nil
+	default:
+		return "", fmt.Errorf("unsupported type")
+	}
+}
+
+func (f *MarkdownFormatter) formatValueAsMarkdown(v interface{}) (string, error) {
+	switch data := v.(type) {
+	case ViewTasksSummary:
+		return f.formatter.FormatViewTasksSummaryAsMarkdown(&data), nil
+	case ViewsOutput:
+		return f.formatter.FormatProjectAndViewListMarkdown(&data.Project, data.Views), nil
+	default:
+		if f.isHandlersProject(data) {
+			return f.formatHandlersProject(data), nil
+		}
+		return f.formatFallbackMarkdown(data)
+	}
+}
+
+func (f *MarkdownFormatter) formatFallbackMarkdown(v interface{}) (string, error) {
+	jsonData, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal fallback JSON: %w", err)
+	}
+	return fmt.Sprintf("<!-- Unsupported type for markdown, falling back to JSON -->\n```json\n%s\n```", string(jsonData)), nil
+}
 
 // JSONFormatter formats data as JSON
 type JSONFormatter struct{}
@@ -37,7 +119,31 @@ func (f *JSONFormatter) Format(data interface{}) (string, error) {
 	return string(jsonData), nil
 }
 
-// isHandlersProject checks if the given interface is the handlers.Project type (has URI field)
+// NewMarkdownFormatter creates a new markdown formatter
+func NewMarkdownFormatter() *MarkdownFormatter {
+	formatter := NewFormatter(false, nil)
+	return &MarkdownFormatter{
+		formatter: formatter,
+	}
+}
+
+// Format formats data as markdown based on the data type.
+func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
+	switch v := data.(type) {
+	case []*Task, []*Project, []*Bucket, []*ProjectView:
+		return f.formatSliceAsMarkdown(v)
+	case *Task, *Project, *Bucket, *ProjectView, *ViewTasks, *ViewTasksSummary, TaskOutput, ViewOutput:
+		return f.formatPointerAsMarkdown(v)
+	case ViewTasksSummary, ViewsOutput:
+		return f.formatValueAsMarkdown(v)
+	default:
+		if f.isHandlersProject(v) {
+			return f.formatHandlersProject(v), nil
+		}
+		return f.formatFallbackMarkdown(v)
+	}
+}
+
 func (f *MarkdownFormatter) isHandlersProject(v interface{}) bool {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
@@ -47,7 +153,6 @@ func (f *MarkdownFormatter) isHandlersProject(v interface{}) bool {
 		return false
 	}
 
-	// Check for ID, Title, and URI fields
 	idField := val.FieldByName("ID")
 	titleField := val.FieldByName("Title")
 	uriField := val.FieldByName("URI")
@@ -55,7 +160,6 @@ func (f *MarkdownFormatter) isHandlersProject(v interface{}) bool {
 	return idField.IsValid() && titleField.IsValid() && uriField.IsValid()
 }
 
-// formatHandlersProject formats a handlers.Project type (with URI field) as markdown
 func (f *MarkdownFormatter) formatHandlersProject(v interface{}) string {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
@@ -67,73 +171,6 @@ func (f *MarkdownFormatter) formatHandlersProject(v interface{}) string {
 	uri := val.FieldByName("URI").String()
 
 	return fmt.Sprintf("# %s\n\n- **ID**: %d\n- **URI**: %s\n", title, id, uri)
-}
-
-// MarkdownFormatter formats data as markdown using the Formatter
-type MarkdownFormatter struct {
-	formatter *Formatter
-}
-
-// NewMarkdownFormatter creates a new markdown formatter
-func NewMarkdownFormatter() *MarkdownFormatter {
-	// Create a formatter with capture output capability
-	formatter := NewFormatter(false, nil) // No color for markdown output
-	return &MarkdownFormatter{
-		formatter: formatter,
-	}
-}
-
-// Format formats data as markdown based on the data type
-func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
-	switch v := data.(type) {
-	case []Task:
-		return f.formatter.FormatTasksAsMarkdown(v), nil
-	case Task:
-		return f.formatter.FormatTaskAsMarkdown(v), nil
-	case []Project:
-		return f.formatter.FormatProjectsAsMarkdown(v), nil
-	case Project:
-		return f.formatter.FormatProjectAsMarkdown(v), nil
-	case []Bucket:
-		return f.formatter.FormatBucketsAsMarkdown(v), nil
-	case Bucket:
-		return f.formatter.FormatBucketsAsMarkdown([]Bucket{v}), nil
-	case ProjectView:
-		return f.formatter.FormatViewAsMarkdown(v), nil
-	case []ProjectView:
-		// Handle multiple views
-		var result string
-		for i, view := range v {
-			if i > 0 {
-				result += "\n---\n\n"
-			}
-			result += f.formatter.FormatViewAsMarkdown(view)
-		}
-		return result, nil
-	case *ViewTasks:
-		return f.formatter.FormatViewTasksAsMarkdown(v), nil
-	case ViewTasksSummary:
-		return f.formatter.FormatViewTasksSummaryAsMarkdown(&v), nil
-	case *ViewTasksSummary:
-		return f.formatter.FormatViewTasksSummaryAsMarkdown(v), nil
-	case TaskOutput:
-		return f.formatter.FormatTaskWithBucketsMarkdown(v.Task, v.Buckets), nil
-	case ViewOutput:
-		return f.formatter.FormatProjectAndViewMarkdown(v.Project, v.View), nil
-	case ViewsOutput:
-		return f.formatter.FormatProjectAndViewListMarkdown(v.Project, v.Views), nil
-	default:
-		// Check if this is the handlers.Project type (with URI field)
-		if f.isHandlersProject(v) {
-			return f.formatHandlersProject(v), nil
-		}
-		// Fallback to JSON for unknown types
-		return fmt.Sprintf("<!-- Unsupported type for markdown, falling back to JSON -->\n```json\n%s\n```",
-			func() string {
-				jsonData, _ := json.MarshalIndent(v, "", "  ")
-				return string(jsonData)
-			}()), nil
-	}
 }
 
 // BothFormatter returns both JSON and markdown formats

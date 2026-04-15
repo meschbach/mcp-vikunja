@@ -306,43 +306,36 @@ docker run -p 8080:8080 \
 
 See [AGENTS.md](AGENTS.md) for coding guidelines and commands.
 
-### create_task Tool Usage
+### Local Development Commands
 
 ```bash
-# Using stdio transport with create_task
-echo '{"title": "New task", "project_id": 1}' | ./bin/mcp-vikunja stdio
+# Full setup: build, start services, run tests
+make dev
 
-# With all optional fields
-echo '{"title": "Complex task", "project_id": 1, "description": "Detailed description", "bucket_id": 5, "due_date": "2025-12-31T23:59:59Z"}' | ./bin/mcp-vikunja stdio
+# Individual commands
+make build          # Build release binaries
+make dev-up         # Start docker-compose services
+make dev-down       # Stop services
+make setup-user     # Create Vikunja user and API token
 
-# Using HTTP transport
-curl -X POST http://localhost:8080 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "create_task",
-      "arguments": {
-        "title": "New task from HTTP",
-        "project_id": 1
-      }
-    }
-  }'
+# Quality checks
+make check          # Run all checks: fmt, vet, lint, tidy, test, coverage, build
+make fmt            # Format code
+make vet            # Run go vet
+make lint           # Run golangci-lint
+make tidy-check     # Verify go mod tidy produces no changes
+make test           # Run tests with verbose output
+make test-cover     # Run tests with coverage report
 ```
 
 ### Testing
 
 ```bash
-# Run all tests
-go test ./...
+# Run tests (requires docker-compose: make dev-up && make setup-user)
+make test
 
-# Run integration tests (requires Vikunja instance)
-go test -tags=integration ./test/integration/...
-
-# Test both transport modes
-./scripts/test-transports.sh
+# Run with coverage
+make test-cover
 ```
 
 ## Documentation

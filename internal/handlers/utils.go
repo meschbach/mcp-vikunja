@@ -1,4 +1,3 @@
-// Package handlers provides MCP tool handlers for Vikunja integration.
 package handlers
 
 import (
@@ -7,14 +6,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 )
 
 // Conversion functions
 
-func toTaskSummary(t vikunja.Task) TaskSummary {
+func toTaskSummary(t *vikunja.Task) TaskSummary {
 	return TaskSummary{
 		ID:    t.ID,
 		Title: t.Title,
@@ -22,7 +20,7 @@ func toTaskSummary(t vikunja.Task) TaskSummary {
 	}
 }
 
-func toTasksSummary(tasks []vikunja.Task) []TaskSummary {
+func toTasksSummary(tasks []*vikunja.Task) []TaskSummary {
 	if tasks == nil {
 		return nil
 	}
@@ -33,54 +31,38 @@ func toTasksSummary(tasks []vikunja.Task) []TaskSummary {
 	return res
 }
 
-func toBucketSummary(b vikunja.Bucket) BucketSummary {
+func toBucketSummary(b *vikunja.Bucket) BucketSummary {
 	return BucketSummary{
 		ID:    b.ID,
 		Title: b.Title,
 	}
 }
 
-func toTask(t vikunja.Task) Task {
-	dueDate := ""
-	if !t.DueDate.IsZero() {
-		dueDate = t.DueDate.Format(time.RFC3339)
-	}
-	created := ""
-	if !t.Created.IsZero() {
-		created = t.Created.Format(time.RFC3339)
-	}
-	updated := ""
-	if !t.Updated.IsZero() {
-		updated = t.Updated.Format(time.RFC3339)
-	}
-
+func toTask(t *vikunja.Task) Task {
 	return Task{
 		ID:          t.ID,
 		Title:       t.Title,
 		Description: t.Description,
 		ProjectID:   t.ProjectID,
 		Done:        t.Done,
-		DueDate:     dueDate,
-		Created:     created,
-		Updated:     updated,
+		DueDate:     t.DueDate,
+		Created:     t.Created,
+		Updated:     t.Updated,
 		Buckets:     toBuckets(t.Buckets),
 		Position:    t.Position,
 	}
 }
 
-func toBucket(b vikunja.Bucket) Bucket {
+func toBucket(b *vikunja.Bucket) Bucket {
 	return Bucket{
 		ID:            b.ID,
 		ProjectViewID: b.ProjectViewID,
 		Title:         b.Title,
-		Description:   b.Description,
-		Limit:         b.Limit,
 		Position:      b.Position,
-		IsDoneBucket:  b.IsDoneBucket,
 	}
 }
 
-func toBuckets(buckets []vikunja.Bucket) []Bucket {
+func toBuckets(buckets []*vikunja.Bucket) []Bucket {
 	if buckets == nil {
 		return nil
 	}
@@ -91,7 +73,7 @@ func toBuckets(buckets []vikunja.Bucket) []Bucket {
 	return res
 }
 
-func toView(v vikunja.ProjectView) View {
+func toView(v *vikunja.ProjectView) View {
 	return View{
 		ID:                      v.ID,
 		ProjectID:               v.ProjectID,
@@ -105,7 +87,7 @@ func toView(v vikunja.ProjectView) View {
 	}
 }
 
-func toViews(views []vikunja.ProjectView) []View {
+func toViews(views []*vikunja.ProjectView) []View {
 	if views == nil {
 		return nil
 	}
@@ -116,22 +98,18 @@ func toViews(views []vikunja.ProjectView) []View {
 	return res
 }
 
-// toVikunjaBuckets converts handlers.Bucket to vikunja.Bucket
-func toVikunjaBuckets(buckets []Bucket) []vikunja.Bucket {
+// toVikunjaBuckets converts handlers.Bucket to vikunja.Bucket pointers
+func toVikunjaBuckets(buckets []Bucket) []*vikunja.Bucket {
 	if buckets == nil {
 		return nil
 	}
-	result := make([]vikunja.Bucket, len(buckets))
+	result := make([]*vikunja.Bucket, len(buckets))
 	for i, b := range buckets {
-		result[i] = vikunja.Bucket{
+		result[i] = &vikunja.Bucket{
 			ID:            b.ID,
 			ProjectViewID: b.ProjectViewID,
 			Title:         b.Title,
-			Description:   b.Description,
-			Limit:         b.Limit,
 			Position:      b.Position,
-			IsDoneBucket:  b.IsDoneBucket,
-			// Note: Tasks field is not included as it's not part of handlers.Bucket
 		}
 	}
 	return result
@@ -173,23 +151,9 @@ func findProjectByIDOrTitle(ctx context.Context, client *vikunja.Client, project
 		return nil, fmt.Errorf("failed to list projects: %w", err)
 	}
 
-	var matches []Project
-	for _, p := range projects {
-		if p.Title == projectTitle {
-			matches = append(matches, Project{
-				ID:    p.ID,
-				Title: p.Title,
-				URI:   fmt.Sprintf("vikunja://project/%d", p.ID),
-			})
-		}
-	}
-
+	matches := findProjectsByTitle(projects, projectTitle)
 	if len(matches) == 0 {
-		var projectTitles []string
-		for _, p := range projects {
-			projectTitles = append(projectTitles, p.Title)
-		}
-		return nil, enhancedProjectNotFoundError(projectTitle, projectTitles)
+		return nil, enhancedProjectNotFoundError(projectTitle, extractProjectTitles(projects))
 	}
 	if len(matches) > 1 {
 		return nil, fmt.Errorf("multiple projects found with title %q, please use project ID", projectTitle)
@@ -197,93 +161,38 @@ func findProjectByIDOrTitle(ctx context.Context, client *vikunja.Client, project
 	return &matches[0], nil
 }
 
-// resolveProject resolves a project by a single identifier (ID or title).
-// It tries numeric ID first; if that fails, treats it as a title.
-func resolveProject(ctx context.Context, client *vikunja.Client, identifier string) (*Project, error) {
-	if identifier == "" {
-		return nil, fmt.Errorf("project identifier is required")
+func findProjectsByTitle(projects []*vikunja.Project, title string) []Project {
+	var matches []Project
+	for _, p := range projects {
+		if p.Title == title {
+			matches = append(matches, Project{
+				ID:    p.ID,
+				Title: p.Title,
+				URI:   fmt.Sprintf("vikunja://project/%d", p.ID),
+			})
+		}
 	}
-	// Try as numeric ID first
-	if _, err := strconv.ParseInt(identifier, 10, 64); err == nil {
-		return findProjectByIDOrTitle(ctx, client, identifier, "")
-	}
-	// Otherwise treat as title
-	return findProjectByIDOrTitle(ctx, client, "", identifier)
+	return matches
 }
 
-// findKanbanView finds the Kanban view for a project. Returns error if not found.
-func findKanbanView(ctx context.Context, client *vikunja.Client, projectID int64) (*vikunja.ProjectView, error) {
-	views, err := client.GetProjectViews(ctx, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get project views: %w", err)
+func extractProjectTitles(projects []*vikunja.Project) []string {
+	titles := make([]string, len(projects))
+	for i, p := range projects {
+		titles[i] = p.Title
 	}
-
-	for _, view := range views {
-		if view.ViewKind == vikunja.ViewKindKanban {
-			return &view, nil
-		}
-	}
-
-	return nil, fmt.Errorf("kanban view not found in project %d. Project must have a Kanban view to use buckets", projectID)
-}
-
-// findBucketByIDOrTitle finds a bucket by ID (if numeric) or title (via Kanban view)
-func findBucketByIDOrTitle(ctx context.Context, client *vikunja.Client, projectID int64, bucketInput string) (*int64, error) {
-	// Try to parse as ID first
-	if id, err := strconv.ParseInt(bucketInput, 10, 64); err == nil && id > 0 {
-		return &id, nil
-	}
-
-	// Must resolve by title - need Kanban view
-	kanbanView, err := findKanbanView(ctx, client, projectID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get buckets for the Kanban view
-	buckets, err := client.GetViewBuckets(ctx, projectID, kanbanView.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get buckets for kanban view: %w", err)
-	}
-
-	// Search for exact title match (case-sensitive)
-	var matches []vikunja.Bucket
-	for _, b := range buckets {
-		if b.Title == bucketInput {
-			matches = append(matches, b)
-		}
-	}
-
-	if len(matches) == 0 {
-		// Extract bucket names for error message
-		bucketNames := make([]string, len(buckets))
-		for i, b := range buckets {
-			bucketNames[i] = b.Title
-		}
-		// Get project title for better error message
-		project, err := client.GetProject(ctx, projectID)
-		if err != nil {
-			project = &vikunja.Project{Title: fmt.Sprintf("Project %d", projectID)}
-		}
-		return nil, enhancedBucketNotFoundError(bucketInput, project.Title, bucketNames)
-	}
-	if len(matches) > 1 {
-		return nil, fmt.Errorf("multiple buckets found with title %q in Kanban view, please use bucket ID", bucketInput)
-	}
-
-	return &matches[0].ID, nil
+	return titles
 }
 
 // findViewByName finds a view by name within a project's views
-func findViewByName(views []vikunja.ProjectView, viewName string, fuzzy bool, projectName string) (*vikunja.ProjectView, error) {
+func findViewByName(views []*vikunja.ProjectView, viewName string, fuzzy bool, projectName string) (*vikunja.ProjectView, error) {
 	var viewTitles []string
 	for _, v := range views {
 		viewTitles = append(viewTitles, v.Title)
 		if fuzzy && containsIgnoreCase(v.Title, viewName) {
-			return &v, nil
+			return v, nil
 		}
 		if !fuzzy && v.Title == viewName {
-			return &v, nil
+			return v, nil
 		}
 	}
 
@@ -304,23 +213,8 @@ func enhancedProjectNotFoundError(title string, availableProjects []string) erro
 	return fmt.Errorf("project with title %q not found.%s Try: list_projects() to see all available projects", title, suggestion)
 }
 
-// enhancedBucketNotFoundError provides contextual error message with available buckets in the Kanban view
-func enhancedBucketNotFoundError(bucket string, projectTitle string, availableBuckets []string) error {
-	var suggestion string
-	if len(availableBuckets) > 0 {
-		if len(availableBuckets) <= 3 {
-			suggestion = fmt.Sprintf(" Available buckets in project '%s': %v", projectTitle, availableBuckets)
-		} else {
-			suggestion = fmt.Sprintf(" Available buckets in project '%s' include: %s, %s, and %d others",
-				projectTitle, availableBuckets[0], availableBuckets[1], len(availableBuckets)-2)
-		}
-	}
-	return fmt.Errorf("bucket %q not found in Kanban view of project %q.%s Try: list_buckets(project_title=%q) to see available buckets",
-		bucket, projectTitle, suggestion, projectTitle)
-}
-
 // enhancedViewNotFoundError provides contextual error message with available options
-func enhancedViewNotFoundError(viewName string, projectName string, availableViews []string) error {
+func enhancedViewNotFoundError(viewName, projectName string, availableViews []string) error {
 	var suggestion string
 	if len(availableViews) > 0 {
 		if len(availableViews) <= 3 {
@@ -331,18 +225,6 @@ func enhancedViewNotFoundError(viewName string, projectName string, availableVie
 		}
 	}
 	return fmt.Errorf("view with title %q not found in project %q.%s Try: list_views() to see project views", viewName, projectName, suggestion)
-}
-
-// parseTime parses a time string or returns zero time
-func parseTime(timeStr string) time.Time {
-	if timeStr == "" {
-		return time.Time{}
-	}
-	parsed, err := time.Parse(time.RFC3339, timeStr)
-	if err != nil {
-		return time.Time{}
-	}
-	return parsed
 }
 
 // containsIgnoreCase checks if a string contains a substring (case-insensitive)

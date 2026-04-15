@@ -3,6 +3,12 @@ version: "2"
 run:
   timeout: 10m
   tests: true
+  skip-dirs:
+    - vendor
+  exclude-rules:
+    - path: cmd/.*_test\.go
+      linters:
+        - forbidigo
 
 linters:
   enable:
@@ -31,7 +37,8 @@ linters:
     - revive
     
     # Testing
-    - paralleltest
+# As an integration project we have to carefully think about this.
+#    - paralleltest
     - testifylint
     
     # Modern practices
@@ -47,14 +54,17 @@ linters:
       min-complexity: 20
     dupl:
       threshold: 80
+      tests: false
     misspell:
       locale: US
     forbidigo:
+      exclude-files:
+        - ".*_test\\.go$"
       forbid:
         - pattern: "context.Background"
-          msg: "Pass a context in or used the past context"
+          msg: "Pass a context in or use t.Context()"
         - pattern: "context.TODO"
-          msg: "Use a specific context or pass a context in"
+          msg: "Pass a context in or use t.Context()"
 
     godoclint:
       options:

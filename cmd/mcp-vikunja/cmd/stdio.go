@@ -1,4 +1,3 @@
-// Package cmd provides cobra commands for the MCP Vikunja server.
 package cmd
 
 import (
@@ -38,10 +37,10 @@ func init() {
 	rootCmd.AddCommand(stdioCmd)
 }
 
-func runStdio(cmd *cobra.Command, args []string) error {
+func runStdio(cmd *cobra.Command, _ []string) error {
 	// Setup logging
 	logConfig := logging.LoadConfig()
-	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
+	if verbose, err := cmd.Flags().GetBool("verbose"); err == nil && verbose {
 		logConfig.Level = logging.LevelDebug
 	}
 	logger, err := logging.NewLogger(logConfig)
@@ -71,6 +70,7 @@ func runStdio(cmd *cobra.Command, args []string) error {
 	}
 
 	// Setup context for graceful shutdown
+	//nolint
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

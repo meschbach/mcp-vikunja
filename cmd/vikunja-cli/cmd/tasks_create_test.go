@@ -16,6 +16,66 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func writeTaskCreateResponse(w http.ResponseWriter, taskID int64, taskTitle, description string, projectID int64, bucketIDs []int64) {
+	w.WriteHeader(http.StatusCreated)                 //nolint:errcheck,gosec
+	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck,gosec
+		"id":          taskID,
+		"title":       taskTitle,
+		"description": description,
+		"project_id":  projectID,
+		"done":        false,
+		"due_date":    nil,
+		"created":     "2024-01-01T00:00:00Z",
+		"updated":     "2024-01-01T00:00:00Z",
+		"position":    0,
+		"bucket_ids":  bucketIDs,
+	})
+}
+
+func writeTaskGetResponse(w http.ResponseWriter, taskID int64, taskTitle, description string, projectID int64) {
+	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck,gosec
+		"id":          taskID,
+		"title":       taskTitle,
+		"description": description,
+		"project_id":  projectID,
+		"done":        false,
+		"due_date":    nil,
+		"created":     "2024-01-01T00:00:00Z",
+		"updated":     "2024-01-01T00:00:00Z",
+		"position":    0,
+		"buckets":     []interface{}{},
+	})
+}
+
+type outputTestCase struct {
+	taskID      int64
+	taskTitle   string
+	description string
+	projectID   int64
+	bucketIDs   []int64
+	useJSON     bool
+	useMarkdown bool
+}
+
+//nolint:gocyclo
+func setupOutputTestServer(t *testing.T, tc *outputTestCase) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
+			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`) //nolint:errcheck
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/projects/1/tasks":
+			writeTaskCreateResponse(w, tc.taskID, tc.taskTitle, tc.description, tc.projectID, tc.bucketIDs)
+		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/v1/tasks/%d", tc.taskID):
+			writeTaskGetResponse(w, tc.taskID, tc.taskTitle, tc.description, tc.projectID)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
+			fmt.Fprint(w, `[{"id":1,"project_id":1,"title":"Kanban","view_kind":"kanban","position":0,"bucket_configuration_mode":"none","default_bucket_id":0,"done_bucket_id":0}]`) //nolint:errcheck
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+}
+
 var (
 	origClient       *vikunja.Client
 	origOutputWriter io.Writer
@@ -26,6 +86,16 @@ var (
 	origInsecure     bool
 )
 
+func saveAndResetGlobals() {
+	origClient = client
+	origOutputWriter = outputWriter
+	origLogger = logger
+	origJSONFmt = jsonFmt
+	origMarkdown = markdown
+	origNoColor = noColor
+	origInsecure = insecure
+}
+
 func resetGlobals() {
 	client = origClient
 	outputWriter = origOutputWriter
@@ -34,7 +104,6 @@ func resetGlobals() {
 	markdown = origMarkdown
 	noColor = origNoColor
 	insecure = origInsecure
-	// Reset command-specific flags to avoid leakage between tests
 	tasksCreateProjectFlag = ""
 	tasksCreateBucketFlag = ""
 }
@@ -48,18 +117,11 @@ func TestTasksCreateCmd_Structure(t *testing.T) {
 	assert.NotNil(t, cmd.Flags().Lookup("bucket"))
 }
 
+//nolint:gocyclo
 func TestTasksCreateCmd_RunE_SuccessDefaultInbox(t *testing.T) {
-	// Save globals
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
-	// Setup output capture
 	buf := &bytes.Buffer{}
 	outputWriter = buf
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -73,61 +135,27 @@ func TestTasksCreateCmd_RunE_SuccessDefaultInbox(t *testing.T) {
 	createTaskCalled := false
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/1/tasks":
+			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`) //nolint:errcheck
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/projects/1/tasks":
 			createTaskCalled = true
 			if err := json.NewDecoder(r.Body).Decode(&createTaskReq); err != nil {
 				t.Fatalf("decode create task request: %v", err)
 			}
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          123,
-				"title":       "My Task",
-				"description": "",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"bucket_ids":  []int64{},
-			})
+			writeTaskCreateResponse(w, 123, "My Task", "", 1, []int64{})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/123":
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          123,
-				"title":       "My Task",
-				"description": "",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-			})
+			writeTaskGetResponse(w, 123, "My Task", "", 1)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
-			json.NewEncoder(w).Encode([]interface{}{
-				map[string]interface{}{
-					"id":                        1,
-					"project_id":                1,
-					"title":                     "Kanban",
-					"view_kind":                 "kanban",
-					"position":                  0,
-					"bucket_configuration_mode": "none",
-					"default_bucket_id":         0,
-					"done_bucket_id":            0,
-				},
-			})
+			fmt.Fprint(w, `[{"id":1,"project_id":1,"title":"Kanban","view_kind":"kanban","position":0,"bucket_configuration_mode":"none","default_bucket_id":0,"done_bucket_id":0}]`) //nolint:errcheck
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer ts.Close()
-	host := ts.URL[7:] // strip http://
+	host := ts.URL[7:]
 
-	// Prepare root command with host and token
 	args := []string{
 		"--host", host,
 		"--token", "dummy",
@@ -148,13 +176,7 @@ func TestTasksCreateCmd_RunE_SuccessDefaultInbox(t *testing.T) {
 }
 
 func TestTasksCreateCmd_RunE_SuccessWithNumericProjectAndBucket(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
@@ -170,53 +192,20 @@ func TestTasksCreateCmd_RunE_SuccessWithNumericProjectAndBucket(t *testing.T) {
 	createTaskCalled := false
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/42/tasks":
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/projects/42/tasks":
 			createTaskCalled = true
 			if err := json.NewDecoder(r.Body).Decode(&createTaskReq); err != nil {
 				t.Fatalf("decode create task request: %v", err)
 			}
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          456,
-				"title":       "Task with bucket",
-				"description": "desc",
-				"project_id":  42,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"bucket_ids":  []int64{99},
-			})
+			writeTaskCreateResponse(w, 456, "Task with bucket", "desc", 42, []int64{99})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/456":
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          456,
-				"title":       "Task with bucket",
-				"description": "desc",
-				"project_id":  42,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-			})
+			writeTaskGetResponse(w, 456, "Task with bucket", "desc", 42)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/42/views":
-			json.NewEncoder(w).Encode([]interface{}{
-				map[string]interface{}{
-					"id":                        5,
-					"project_id":                42,
-					"title":                     "Kanban",
-					"view_kind":                 "kanban",
-					"position":                  0,
-					"bucket_configuration_mode": "none",
-					"default_bucket_id":         0,
-					"done_bucket_id":            0,
-				},
-			})
+			fmt.Fprint(w, `[{"id":5,"project_id":42,"title":"Kanban","view_kind":"kanban","position":0,"bucket_configuration_mode":"none","default_bucket_id":0,"done_bucket_id":0}]`) //nolint:errcheck
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer ts.Close()
@@ -242,14 +231,9 @@ func TestTasksCreateCmd_RunE_SuccessWithNumericProjectAndBucket(t *testing.T) {
 	assert.Equal(t, int64(99), *createTaskReq.BucketID)
 }
 
+//nolint:gocyclo
 func TestTasksCreateCmd_RunE_SuccessWithTitleProjectAndBucket(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
@@ -265,46 +249,24 @@ func TestTasksCreateCmd_RunE_SuccessWithTitleProjectAndBucket(t *testing.T) {
 	createTaskCalled := false
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":2,"title":"Work"}]`)
+			fmt.Fprint(w, `[{"id":2,"title":"Work"}]`) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/2/views":
-			fmt.Fprint(w, `[{"id":5,"project_id":2,"title":"Kanban","view_kind":"kanban","position":0,"default_bucket_id":0,"done_bucket_id":0}]`)
+			fmt.Fprint(w, `[{"id":5,"project_id":2,"title":"Kanban","view_kind":"kanban","position":0,"default_bucket_id":0,"done_bucket_id":0}]`) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/2/views/5/buckets":
-			fmt.Fprint(w, `[{"id":10,"project_view_id":5,"title":"Todo","description":"","position":0,"is_done_bucket":false},{"id":11,"project_view_id":5,"title":"In Progress","description":"","position":1,"is_done_bucket":false}]`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/2/tasks":
+			fmt.Fprint(w, `[{"id":10,"project_view_id":5,"title":"Todo","description":"","position":0,"is_done_bucket":false},{"id":11,"project_view_id":5,"title":"In Progress","description":"","position":1,"is_done_bucket":false}]`) //nolint:errcheck
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/projects/2/tasks":
 			createTaskCalled = true
 			if err := json.NewDecoder(r.Body).Decode(&createTaskReq); err != nil {
 				t.Fatalf("decode create task request: %v", err)
 			}
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          789,
-				"title":       "Task with title bucket",
-				"description": "desc2",
-				"project_id":  2,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"bucket_ids":  []int64{11},
-			})
+			writeTaskCreateResponse(w, 789, "Task with title bucket", "desc2", 2, []int64{11})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/789":
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          789,
-				"title":       "Task with title bucket",
-				"description": "desc2",
-				"project_id":  2,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-			})
+			writeTaskGetResponse(w, 789, "Task with title bucket", "desc2", 2)
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer ts.Close()
@@ -331,13 +293,7 @@ func TestTasksCreateCmd_RunE_SuccessWithTitleProjectAndBucket(t *testing.T) {
 }
 
 func TestTasksCreateCmd_RunE_ErrorMissingTitle(t *testing.T) {
-	// Save globals
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
@@ -345,6 +301,7 @@ func TestTasksCreateCmd_RunE_ErrorMissingTitle(t *testing.T) {
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 	}))
 	defer ts.Close()
@@ -359,19 +316,12 @@ func TestTasksCreateCmd_RunE_ErrorMissingTitle(t *testing.T) {
 	}
 	rootCmd.SetArgs(args)
 	err := rootCmd.Execute()
-	// Cobra should return an error about needing at least 1 arg
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "requires at least 1 arg")
 }
 
 func TestTasksCreateCmd_RunE_ErrorProjectNotFound(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
@@ -379,11 +329,11 @@ func TestTasksCreateCmd_RunE_ErrorProjectNotFound(t *testing.T) {
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects" {
-			fmt.Fprint(w, `[]`) // no projects
+			fmt.Fprint(w, `[]`) //nolint:errcheck
 		} else {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer ts.Close()
@@ -402,14 +352,9 @@ func TestTasksCreateCmd_RunE_ErrorProjectNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), `project with title "Inbox" not found`)
 }
 
+//nolint:gocyclo
 func TestTasksCreateCmd_RunE_ErrorBucketNotFound(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
@@ -417,19 +362,18 @@ func TestTasksCreateCmd_RunE_ErrorBucketNotFound(t *testing.T) {
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`)
+			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1":
-			fmt.Fprint(w, `{"id":1,"title":"Inbox"}`)
+			fmt.Fprint(w, `{"id":1,"title":"Inbox"}`) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
-			fmt.Fprint(w, `[{"id":5,"project_id":1,"title":"Kanban","view_kind":"kanban","position":0}]`)
+			fmt.Fprint(w, `[{"id":5,"project_id":1,"title":"Kanban","view_kind":"kanban","position":0}]`) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views/5/buckets":
-			// Buckets: only "Todo" exists, request asks for "Inbox" implicitly later
-			fmt.Fprint(w, `[{"id":10,"project_view_id":5,"title":"Todo","description":"","position":0,"is_done_bucket":false}]`)
+			fmt.Fprint(w, `[{"id":10,"project_view_id":5,"title":"Todo","description":"","position":0,"is_done_bucket":false}]`) //nolint:errcheck
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer ts.Close()
@@ -451,13 +395,7 @@ func TestTasksCreateCmd_RunE_ErrorBucketNotFound(t *testing.T) {
 }
 
 func TestTasksCreateCmd_RunE_ErrorMissingKanbanView(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
@@ -465,15 +403,14 @@ func TestTasksCreateCmd_RunE_ErrorMissingKanbanView(t *testing.T) {
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`)
+			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
-			// No kanban view, only list view
-			fmt.Fprint(w, `[{"id":2,"project_id":1,"title":"List","view_kind":"list","position":0}]`)
+			fmt.Fprint(w, `[{"id":2,"project_id":1,"title":"List","view_kind":"list","position":0}]`) //nolint:errcheck
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer ts.Close()
@@ -493,68 +430,21 @@ func TestTasksCreateCmd_RunE_ErrorMissingKanbanView(t *testing.T) {
 }
 
 func TestTasksCreateCmd_RunE_OutputJSON(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
 	outputWriter = buf
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/1/tasks":
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          100,
-				"title":       "JSON Task",
-				"description": "json desc",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"bucket_ids":  []int64{},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/100":
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          100,
-				"title":       "JSON Task",
-				"description": "json desc",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"buckets":     []interface{}{},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
-			json.NewEncoder(w).Encode([]interface{}{
-				map[string]interface{}{
-					"id":                        1,
-					"project_id":                1,
-					"title":                     "Kanban",
-					"view_kind":                 "kanban",
-					"position":                  0,
-					"bucket_configuration_mode": "none",
-					"default_bucket_id":         0,
-					"done_bucket_id":            0,
-				},
-			})
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
+	ts := setupOutputTestServer(t, &outputTestCase{
+		taskID:      100,
+		taskTitle:   "JSON Task",
+		description: "json desc",
+		projectID:   1,
+		bucketIDs:   []int64{},
+		useJSON:     true,
+	})
 	defer ts.Close()
 	host := ts.URL[7:]
 
@@ -570,81 +460,29 @@ func TestTasksCreateCmd_RunE_OutputJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	// JSON output includes task and buckets when bucket info is available
-	var result struct {
-		Task    map[string]interface{} `json:"task"`
-		Buckets interface{}            `json:"buckets,omitempty"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(output), &result))
-	task := result.Task
+	var task map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(output), &task))
 	require.NotNil(t, task, "expected task object in JSON output")
-	assert.Equal(t, float64(100), task["id"])
+	assert.InDelta(t, 100.0, task["id"], 0)
 	assert.Equal(t, "JSON Task", task["title"])
 }
 
 func TestTasksCreateCmd_RunE_OutputMarkdown(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
 	outputWriter = buf
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/1/tasks":
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          200,
-				"title":       "Markdown Task",
-				"description": "md desc",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"bucket_ids":  []int64{},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/200":
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          200,
-				"title":       "Markdown Task",
-				"description": "md desc",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"buckets":     []interface{}{},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
-			json.NewEncoder(w).Encode([]interface{}{
-				map[string]interface{}{
-					"id":                        1,
-					"project_id":                1,
-					"title":                     "Kanban",
-					"view_kind":                 "kanban",
-					"position":                  0,
-					"bucket_configuration_mode": "none",
-					"default_bucket_id":         0,
-					"done_bucket_id":            0,
-				},
-			})
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
+	ts := setupOutputTestServer(t, &outputTestCase{
+		taskID:      200,
+		taskTitle:   "Markdown Task",
+		description: "md desc",
+		projectID:   1,
+		bucketIDs:   []int64{},
+		useMarkdown: true,
+	})
 	defer ts.Close()
 	host := ts.URL[7:]
 
@@ -660,74 +498,25 @@ func TestTasksCreateCmd_RunE_OutputMarkdown(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Markdown should contain a title heading and details
 	assert.Contains(t, output, "# Markdown Task")
 	assert.Contains(t, output, "**ID**: 200")
 }
 
 func TestTasksCreateCmd_RunE_OutputTable(t *testing.T) {
-	origClient = client
-	origOutputWriter = outputWriter
-	origLogger = logger
-	origJSONFmt = jsonFmt
-	origMarkdown = markdown
-	origNoColor = noColor
-	origInsecure = insecure
+	saveAndResetGlobals()
 	defer resetGlobals()
 
 	buf := &bytes.Buffer{}
 	outputWriter = buf
 	logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects":
-			fmt.Fprint(w, `[{"id":1,"title":"Inbox"}]`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/1/tasks":
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          300,
-				"title":       "Table Task",
-				"description": "",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"bucket_ids":  []int64{},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/300":
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":          300,
-				"title":       "Table Task",
-				"description": "",
-				"project_id":  1,
-				"done":        false,
-				"due_date":    nil,
-				"created":     "2024-01-01T00:00:00Z",
-				"updated":     "2024-01-01T00:00:00Z",
-				"position":    0,
-				"buckets":     []interface{}{},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/1/views":
-			json.NewEncoder(w).Encode([]interface{}{
-				map[string]interface{}{
-					"id":                        1,
-					"project_id":                1,
-					"title":                     "Kanban",
-					"view_kind":                 "kanban",
-					"position":                  0,
-					"bucket_configuration_mode": "none",
-					"default_bucket_id":         0,
-					"done_bucket_id":            0,
-				},
-			})
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
+	ts := setupOutputTestServer(t, &outputTestCase{
+		taskID:      300,
+		taskTitle:   "Table Task",
+		description: "",
+		projectID:   1,
+		bucketIDs:   []int64{},
+	})
 	defer ts.Close()
 	host := ts.URL[7:]
 
@@ -742,7 +531,6 @@ func TestTasksCreateCmd_RunE_OutputTable(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Table format includes headers and tab-separated fields
 	assert.Contains(t, output, "Table Task")
 	assert.Contains(t, output, "300")
 }

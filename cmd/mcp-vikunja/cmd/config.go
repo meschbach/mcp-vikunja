@@ -1,4 +1,3 @@
-// Package cmd provides cobra commands for the MCP Vikunja server.
 package cmd
 
 import (
@@ -59,7 +58,7 @@ func init() {
 	configShowCmd.Flags().StringVar(&configFormat, "format", "table", "Output format: table|json")
 }
 
-func runConfigShow(cmd *cobra.Command, args []string) error {
+func runConfigShow(cmd *cobra.Command, _ []string) error {
 	// Load configuration
 	cfg, err := loadConfigFromFlags(cmd)
 	if err != nil {
@@ -78,32 +77,43 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 
 func showConfigTable(cfg *config.Config) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	defer func() {
-		_ = w.Flush()
-	}()
 
-	_, _ = fmt.Fprintln(w, "SETTING\tVALUE")
-	_, _ = fmt.Fprintln(w, "-------\t-----")
-
-	// Transport settings
-	_, _ = fmt.Fprintf(w, "Transport\t%s\n", cfg.Transport)
-
-	// Vikunja settings
-	_, _ = fmt.Fprintf(w, "Vikunja Host\t%s\n", maskSensitive(cfg.Vikunja.Host))
-	_, _ = fmt.Fprintf(w, "Vikunja Token\t%s\n", maskSensitive(cfg.Vikunja.Token))
-
-	// HTTP settings (only if HTTP transport)
-	if cfg.Transport == config.TransportHTTP {
-		_, _ = fmt.Fprintf(w, "HTTP Host\t%s\n", cfg.HTTP.Host)
-		_, _ = fmt.Fprintf(w, "HTTP Port\t%d\n", cfg.HTTP.Port)
-		_, _ = fmt.Fprintf(w, "Session Timeout\t%s\n", cfg.HTTP.SessionTimeout)
-		_, _ = fmt.Fprintf(w, "Stateless\t%t\n", cfg.HTTP.Stateless)
-		_, _ = fmt.Fprintf(w, "Read Timeout\t%s\n", cfg.HTTP.ReadTimeout)
-		_, _ = fmt.Fprintf(w, "Write Timeout\t%s\n", cfg.HTTP.WriteTimeout)
-		_, _ = fmt.Fprintf(w, "Idle Timeout\t%s\n", cfg.HTTP.IdleTimeout)
+	lines := buildConfigLines(cfg)
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			flushErr := w.Flush()
+			if flushErr != nil {
+				return flushErr
+			}
+			return err
+		}
 	}
 
-	return nil
+	return w.Flush()
+}
+
+func buildConfigLines(cfg *config.Config) []string {
+	lines := []string{
+		"SETTING\tVALUE",
+		"-------\t-----",
+		"Transport\t" + string(cfg.Transport),
+		"Vikunja Host\t" + maskSensitive(cfg.Vikunja.Host),
+		"Vikunja Token\t" + maskSensitive(cfg.Vikunja.Token),
+	}
+
+	if cfg.Transport == config.TransportHTTP {
+		lines = append(lines,
+			"HTTP Host\t"+cfg.HTTP.Host,
+			"HTTP Port\t"+fmt.Sprintf("%d", cfg.HTTP.Port),
+			"Session Timeout\t"+cfg.HTTP.SessionTimeout.String(),
+			"Stateless\t"+fmt.Sprintf("%t", cfg.HTTP.Stateless),
+			"Read Timeout\t"+cfg.HTTP.ReadTimeout.String(),
+			"Write Timeout\t"+cfg.HTTP.WriteTimeout.String(),
+			"Idle Timeout\t"+cfg.HTTP.IdleTimeout.String(),
+		)
+	}
+
+	return lines
 }
 
 func showConfigJSON(cfg *config.Config) error {
@@ -132,7 +142,7 @@ func showConfigJSON(cfg *config.Config) error {
 	return encoder.Encode(jsonCfg)
 }
 
-func runConfigValidate(cmd *cobra.Command, args []string) error {
+func runConfigValidate(cmd *cobra.Command, _ []string) error {
 	cmd.Printf("Loading configuration...\n")
 
 	// Load configuration
@@ -169,9 +179,23 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 }
 
 func loadConfigFromFlags(cmd *cobra.Command) (*config.Config, error) {
-	// Start with default configuration
-	cfg := &config.Config{
-		Transport: config.TransportStdio, // Default
+	cfg := newDefaultConfig()
+
+	applyVikunjaFlags(cmd, cfg)
+
+	envCfg, err := config.Load(nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load environment configuration: %w", err)
+	}
+
+	mergeEnvConfig(cfg, envCfg)
+
+	return cfg, nil
+}
+
+func newDefaultConfig() *config.Config {
+	return &config.Config{
+		Transport: config.TransportStdio,
 		HTTP: config.HTTPConfig{
 			Host:           "localhost",
 			Port:           8080,
@@ -183,36 +207,28 @@ func loadConfigFromFlags(cmd *cobra.Command) (*config.Config, error) {
 		},
 		Vikunja: config.VikunjaConfig{},
 	}
+}
 
-	// Override with flags if provided
+func applyVikunjaFlags(cmd *cobra.Command, cfg *config.Config) {
 	if host := cmd.Flag("vikunja-host").Value.String(); host != "" {
 		cfg.Vikunja.Host = host
 	}
 	if token := cmd.Flag("vikunja-token").Value.String(); token != "" {
 		cfg.Vikunja.Token = token
 	}
+}
 
-	// Load from environment variables (this will override flags if env vars are set)
-	envCfg, err := config.Load(nil, nil) // No CLI parameters for config commands
-	if err != nil {
-		return nil, fmt.Errorf("failed to load environment configuration: %w", err)
-	}
-
-	// Merge environment config (only if not explicitly set via flags)
+func mergeEnvConfig(cfg, envCfg *config.Config) {
 	if cfg.Vikunja.Host == "" && envCfg.Vikunja.Host != "" {
 		cfg.Vikunja.Host = envCfg.Vikunja.Host
 	}
 	if cfg.Vikunja.Token == "" && envCfg.Vikunja.Token != "" {
 		cfg.Vikunja.Token = envCfg.Vikunja.Token
 	}
-
-	// Use environment transport if not explicitly set
 	if envCfg.Transport != "" {
 		cfg.Transport = envCfg.Transport
 		cfg.HTTP = envCfg.HTTP
 	}
-
-	return cfg, nil
 }
 
 func maskSensitive(value string) string {

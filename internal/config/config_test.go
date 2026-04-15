@@ -10,13 +10,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func setEnv(t *testing.T, key, value string) {
+	if err := os.Setenv(key, value); err != nil {
+		t.Fatalf("failed to set env %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Unsetenv(key); err != nil {
+			t.Logf("warning: failed to unset env %s: %v", key, err)
+		}
+	})
+}
+
 func TestLoad_Defaults(t *testing.T) {
-	// Clear environment variables
-	_ = os.Unsetenv("MCP_TRANSPORT")
-	_ = os.Unsetenv("MCP_HTTP_HOST")
-	_ = os.Unsetenv("MCP_HTTP_PORT")
-	_ = os.Unsetenv("VIKUNJA_HOST")
-	_ = os.Unsetenv("VIKUNJA_TOKEN")
+	t.Cleanup(func() {
+		for _, key := range []string{"MCP_TRANSPORT", "MCP_HTTP_HOST", "MCP_HTTP_PORT", "VIKUNJA_HOST", "VIKUNJA_TOKEN"} {
+			if err := os.Unsetenv(key); err != nil {
+				t.Logf("warning: failed to unset env %s: %v", key, err)
+			}
+		}
+	})
 
 	cfg, err := Load(nil, nil)
 	require.NoError(t, err)
@@ -33,8 +45,7 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_HTTPTransport(t *testing.T) {
-	_ = os.Setenv("MCP_TRANSPORT", "http")
-	defer func() { _ = os.Unsetenv("MCP_TRANSPORT") }()
+	setEnv(t, "MCP_TRANSPORT", "http")
 
 	cfg, err := Load(nil, nil)
 	require.NoError(t, err)
@@ -42,8 +53,7 @@ func TestLoad_HTTPTransport(t *testing.T) {
 }
 
 func TestLoad_InvalidTransport(t *testing.T) {
-	_ = os.Setenv("MCP_TRANSPORT", "websocket")
-	defer func() { _ = os.Unsetenv("MCP_TRANSPORT") }()
+	setEnv(t, "MCP_TRANSPORT", "websocket")
 
 	_, err := Load(nil, nil)
 	require.Error(t, err)
@@ -51,22 +61,13 @@ func TestLoad_InvalidTransport(t *testing.T) {
 }
 
 func TestLoad_HTTPConfig(t *testing.T) {
-	_ = os.Setenv("MCP_HTTP_HOST", "0.0.0.0")
-	_ = os.Setenv("MCP_HTTP_PORT", "9000")
-	_ = os.Setenv("MCP_HTTP_SESSION_TIMEOUT", "1h")
-	_ = os.Setenv("MCP_HTTP_STATELESS", "true")
-	_ = os.Setenv("MCP_HTTP_READ_TIMEOUT", "60s")
-	_ = os.Setenv("MCP_HTTP_WRITE_TIMEOUT", "45s")
-	_ = os.Setenv("MCP_HTTP_IDLE_TIMEOUT", "300s")
-	defer func() {
-		_ = os.Unsetenv("MCP_HTTP_HOST")
-		_ = os.Unsetenv("MCP_HTTP_PORT")
-		_ = os.Unsetenv("MCP_HTTP_SESSION_TIMEOUT")
-		_ = os.Unsetenv("MCP_HTTP_STATELESS")
-		_ = os.Unsetenv("MCP_HTTP_READ_TIMEOUT")
-		_ = os.Unsetenv("MCP_HTTP_WRITE_TIMEOUT")
-		_ = os.Unsetenv("MCP_HTTP_IDLE_TIMEOUT")
-	}()
+	setEnv(t, "MCP_HTTP_HOST", "0.0.0.0")
+	setEnv(t, "MCP_HTTP_PORT", "9000")
+	setEnv(t, "MCP_HTTP_SESSION_TIMEOUT", "1h")
+	setEnv(t, "MCP_HTTP_STATELESS", "true")
+	setEnv(t, "MCP_HTTP_READ_TIMEOUT", "60s")
+	setEnv(t, "MCP_HTTP_WRITE_TIMEOUT", "45s")
+	setEnv(t, "MCP_HTTP_IDLE_TIMEOUT", "300s")
 
 	cfg, err := Load(nil, nil)
 	require.NoError(t, err)
@@ -81,14 +82,9 @@ func TestLoad_HTTPConfig(t *testing.T) {
 }
 
 func TestLoad_VikunjaConfig(t *testing.T) {
-	_ = os.Setenv("VIKUNJA_HOST", "https://vikunja.example.com")
-	_ = os.Setenv("VIKUNJA_TOKEN", "test-token-123")
-	_ = os.Setenv("VIKUNJA_INSECURE", "true")
-	defer func() {
-		_ = os.Unsetenv("VIKUNJA_HOST")
-		_ = os.Unsetenv("VIKUNJA_TOKEN")
-		_ = os.Unsetenv("VIKUNJA_INSECURE")
-	}()
+	setEnv(t, "VIKUNJA_HOST", "https://vikunja.example.com")
+	setEnv(t, "VIKUNJA_TOKEN", "test-token-123")
+	setEnv(t, "VIKUNJA_INSECURE", "true")
 
 	cfg, err := Load(nil, nil)
 	require.NoError(t, err)
@@ -99,8 +95,7 @@ func TestLoad_VikunjaConfig(t *testing.T) {
 }
 
 func TestLoad_InvalidHTTPPort(t *testing.T) {
-	_ = os.Setenv("MCP_HTTP_PORT", "invalid")
-	defer func() { _ = os.Unsetenv("MCP_HTTP_PORT") }()
+	setEnv(t, "MCP_HTTP_PORT", "invalid")
 
 	_, err := Load(nil, nil)
 	require.Error(t, err)
@@ -108,8 +103,7 @@ func TestLoad_InvalidHTTPPort(t *testing.T) {
 }
 
 func TestLoad_InvalidDuration(t *testing.T) {
-	_ = os.Setenv("MCP_HTTP_SESSION_TIMEOUT", "invalid")
-	defer func() { _ = os.Unsetenv("MCP_HTTP_SESSION_TIMEOUT") }()
+	setEnv(t, "MCP_HTTP_SESSION_TIMEOUT", "invalid")
 
 	_, err := Load(nil, nil)
 	require.Error(t, err)
@@ -117,8 +111,7 @@ func TestLoad_InvalidDuration(t *testing.T) {
 }
 
 func TestLoad_InvalidBool(t *testing.T) {
-	_ = os.Setenv("MCP_HTTP_STATELESS", "invalid")
-	defer func() { _ = os.Unsetenv("MCP_HTTP_STATELESS") }()
+	setEnv(t, "MCP_HTTP_STATELESS", "invalid")
 
 	_, err := Load(nil, nil)
 	require.Error(t, err)
@@ -303,40 +296,36 @@ func TestParseOutputFormat(t *testing.T) {
 }
 
 func TestLoad_CLIFormatPrecedence(t *testing.T) {
-	// Clear environment variables
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+	t.Cleanup(func() {
+		if err := os.Unsetenv("VIKUNJA_OUTPUT_FORMAT"); err != nil {
+			t.Logf("warning: failed to unset env: %v", err)
+		}
+	})
 
-	// Test CLI flag overrides environment
 	json := "json"
 	cfg, err := Load(&json, nil)
 	require.NoError(t, err)
 	assert.Equal(t, vikunja.OutputFormatJSON, cfg.OutputFormat)
 
-	// Test CLI flag with value
 	markdown := "markdown"
 	cfg, err = Load(&markdown, nil)
 	require.NoError(t, err)
 	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
-
-	// Clean up
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 }
 
 func TestLoad_EnvironmentVariableFallback(t *testing.T) {
-	// Clear environment variables
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
+	t.Cleanup(func() {
+		if err := os.Unsetenv("VIKUNJA_OUTPUT_FORMAT"); err != nil {
+			t.Logf("warning: failed to unset env: %v", err)
+		}
+	})
 
-	// Test with no CLI flag - should use default (Markdown for AI/LLM compatibility)
 	cfg, err := Load(nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
 
-	// Test with environment variable - no CLI flag
-	_ = os.Setenv("VIKUNJA_OUTPUT_FORMAT", "markdown")
+	setEnv(t, "VIKUNJA_OUTPUT_FORMAT", "markdown")
 	cfg, err = Load(nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, vikunja.OutputFormatMarkdown, cfg.OutputFormat)
-
-	// Clean up
-	_ = os.Unsetenv("VIKUNJA_OUTPUT_FORMAT")
 }

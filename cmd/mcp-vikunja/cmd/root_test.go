@@ -40,15 +40,15 @@ func TestRootCommand(t *testing.T) {
 
 		// Check for expected flags
 		hostFlag, err := flags.GetString("vikunja-host")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Empty(t, hostFlag)
 
 		tokenFlag, err := flags.GetString("vikunja-token")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Empty(t, tokenFlag)
 
 		verboseFlag, err := flags.GetBool("verbose")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, verboseFlag)
 	})
 }
@@ -216,8 +216,8 @@ func TestLoadConfigFromFlags(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
 		cmd.Flags().String("vikunja-host", "", "")
 		cmd.Flags().String("vikunja-token", "", "")
-		cmd.Flags().Set("vikunja-host", "test.example.com")
-		cmd.Flags().Set("vikunja-token", "test-token")
+		require.NoError(t, cmd.Flags().Set("vikunja-host", "test.example.com"))
+		require.NoError(t, cmd.Flags().Set("vikunja-token", "test-token"))
 
 		cfg, err := loadConfigFromFlags(cmd)
 		require.NoError(t, err)
@@ -226,77 +226,74 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	})
 }
 
+func captureStdout(fn func() error) (string, error) {
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", err
+	}
+	os.Stdout = w
+
+	err = fn()
+
+	if closeErr := w.Close(); closeErr != nil {
+		os.Stdout = oldStdout
+		return "", closeErr
+	}
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	if _, readErr := buf.ReadFrom(r); readErr != nil {
+		return "", readErr
+	}
+	return buf.String(), err
+}
+
 func TestConfigShowFormats(t *testing.T) {
-	t.Run("showConfigTable produces output", func(t *testing.T) {
-		cfg := &config.Config{
-			Transport: config.TransportStdio,
-			HTTP: config.HTTPConfig{
-				Host: "localhost",
-				Port: 8080,
-			},
-			Vikunja: config.VikunjaConfig{
-				Host:  "test.example.com",
-				Token: "secret-token",
-			},
-		}
+	tests := []struct {
+		name      string
+		transport config.TransportType
+		showFn    func(*config.Config) error
+		expected  []string
+	}{
+		{
+			name:      "showConfigTable",
+			transport: config.TransportStdio,
+			showFn:    showConfigTable,
+			expected:  []string{"SETTING", "VALUE", "Transport", "Vikunja Host"},
+		},
+		{
+			name:      "showConfigJSON",
+			transport: config.TransportHTTP,
+			showFn:    showConfigJSON,
+			expected:  []string{"transport", "http", "vikunja", "***"},
+		},
+	}
 
-		// Capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Transport: tt.transport,
+				HTTP: config.HTTPConfig{
+					Host: "localhost",
+					Port: 8080,
+				},
+				Vikunja: config.VikunjaConfig{
+					Host:  "test.example.com",
+					Token: "secret-token",
+				},
+			}
 
-		err := showConfigTable(cfg)
-		require.NoError(t, err)
+			output, err := captureStdout(func() error {
+				return tt.showFn(cfg)
+			})
+			require.NoError(t, err)
 
-		w.Close()
-		os.Stdout = oldStdout
-
-		var buf bytes.Buffer
-		buf.ReadFrom(r)
-		output := buf.String()
-
-		// Verify table output
-		assert.Contains(t, output, "SETTING")
-		assert.Contains(t, output, "VALUE")
-		assert.Contains(t, output, "Transport")
-		assert.Contains(t, output, "Vikunja Host")
-	})
-
-	t.Run("showConfigJSON produces valid JSON", func(t *testing.T) {
-		cfg := &config.Config{
-			Transport: config.TransportHTTP,
-			HTTP: config.HTTPConfig{
-				Host: "localhost",
-				Port: 8080,
-			},
-			Vikunja: config.VikunjaConfig{
-				Host:  "test.example.com",
-				Token: "secret-token",
-			},
-		}
-
-		// Capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		err := showConfigJSON(cfg)
-		require.NoError(t, err)
-
-		w.Close()
-		os.Stdout = oldStdout
-
-		var buf bytes.Buffer
-		buf.ReadFrom(r)
-		output := buf.String()
-
-		// Verify JSON output
-		assert.Contains(t, output, "transport")
-		assert.Contains(t, output, "http")
-		assert.Contains(t, output, "vikunja")
-		// Token should be masked
-		assert.Contains(t, output, "***")
-	})
+			for _, exp := range tt.expected {
+				assert.Contains(t, output, exp)
+			}
+		})
+	}
 }
 
 func TestConfigCommands(t *testing.T) {
@@ -327,11 +324,11 @@ func TestServerCommand(t *testing.T) {
 		flags := serverCmd.Flags()
 
 		host, err := flags.GetString("http-host")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "localhost", host)
 
 		port, err := flags.GetInt("http-port")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 8080, port)
 	})
 }

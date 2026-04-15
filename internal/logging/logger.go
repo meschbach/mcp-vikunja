@@ -9,9 +9,13 @@ import (
 	"strings"
 )
 
-// Level represents log levels
+// Level represents log levels.
 type Level string
 
+// LevelDebug represents debug level.
+// LevelInfo represents info level.
+// LevelWarn represents warn level.
+// LevelError represents error level.
 const (
 	LevelDebug Level = "debug"
 	LevelInfo  Level = "info"
@@ -19,9 +23,11 @@ const (
 	LevelError Level = "error"
 )
 
-// Format represents log output formats
+// Format represents log output formats.
 type Format string
 
+// FormatJSON represents JSON output format.
+// FormatText represents text output format.
 const (
 	FormatJSON Format = "json"
 	FormatText Format = "text"
@@ -64,53 +70,59 @@ func LoadConfig() Config {
 
 // NewLogger creates a new slog.Logger based on configuration
 func NewLogger(cfg Config) (*slog.Logger, error) {
-	// Determine output writer
-	var output io.Writer
-	switch cfg.Output {
+	output, err := openOutput(cfg.Output)
+	if err != nil {
+		return nil, err
+	}
+
+	level := parseLevel(cfg.Level)
+	handler := newHandler(output, level, cfg.Format)
+
+	return slog.New(handler), nil
+}
+
+func openOutput(path string) (io.Writer, error) {
+	switch path {
 	case "stdout":
-		output = os.Stdout
+		return os.Stdout, nil
 	case "stderr":
-		output = os.Stderr
+		return os.Stderr, nil
 	default:
-		// Assume it's a file path
-		file, err := os.OpenFile(cfg.Output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		// #nosec G304 - path is configured by operator via LOG_OUTPUT env var
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open log file: %w", err)
 		}
-		output = file
+		return file, nil
 	}
+}
 
-	// Convert our Level to slog.Level
-	var level slog.Level
-	switch cfg.Level {
+func parseLevel(lvl Level) slog.Level {
+	switch lvl {
 	case LevelDebug:
-		level = slog.LevelDebug
+		return slog.LevelDebug
 	case LevelInfo:
-		level = slog.LevelInfo
+		return slog.LevelInfo
 	case LevelWarn:
-		level = slog.LevelWarn
+		return slog.LevelWarn
 	case LevelError:
-		level = slog.LevelError
+		return slog.LevelError
 	default:
-		level = slog.LevelInfo
+		return slog.LevelInfo
 	}
+}
 
-	// Create handler based on format
-	var handler slog.Handler
-	opts := &slog.HandlerOptions{
-		Level: level,
-	}
+func newHandler(output io.Writer, level slog.Level, format Format) slog.Handler {
+	opts := &slog.HandlerOptions{Level: level}
 
-	switch cfg.Format {
+	switch format {
 	case FormatJSON:
-		handler = slog.NewJSONHandler(output, opts)
+		return slog.NewJSONHandler(output, opts)
 	case FormatText:
-		handler = slog.NewTextHandler(output, opts)
+		return slog.NewTextHandler(output, opts)
 	default:
-		handler = slog.NewJSONHandler(output, opts)
+		return slog.NewJSONHandler(output, opts)
 	}
-
-	return slog.New(handler), nil
 }
 
 // MustNewLogger creates a new logger or panics on error
@@ -123,7 +135,7 @@ func MustNewLogger(cfg Config) *slog.Logger {
 }
 
 // RedactSensitive redacts sensitive values from log entries
-func RedactSensitive(key string, value string) slog.Attr {
+func RedactSensitive(key, value string) slog.Attr {
 	// List of sensitive fields
 	sensitiveFields := []string{
 		"token", "password", "secret", "api_key", "auth",

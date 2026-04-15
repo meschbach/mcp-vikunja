@@ -1,4 +1,3 @@
-// Package handlers provides MCP tool handlers for Vikunja integration.
 package handlers
 
 import (
@@ -38,7 +37,7 @@ func (h *Handlers) findViewHandler(ctx context.Context, _ *mcp.CallToolRequest, 
 
 	output := FindViewOutput{
 		Project: *project,
-		View:    toView(*foundView),
+		View:    toView(foundView),
 	}
 
 	// Convert handlers.FindViewOutput to vikunja.ViewOutput for formatting
@@ -74,7 +73,6 @@ func (h *Handlers) findViewHandler(ctx context.Context, _ *mcp.CallToolRequest, 
 
 // listViewsHandler handles the list_views tool
 func (h *Handlers) listViewsHandler(ctx context.Context, _ *mcp.CallToolRequest, input ListViewsInput) (*mcp.CallToolResult, ListViewsOutput, error) {
-	// Validate view_kind if provided
 	if err := validateViewKind(input.ViewKind); err != nil {
 		return h.buildErrorResult(err.Error()), ListViewsOutput{}, err
 	}
@@ -84,41 +82,57 @@ func (h *Handlers) listViewsHandler(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, ListViewsOutput{}, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	project, err := findProjectByIDOrTitle(ctx, client, input.ProjectID, input.ProjectTitle)
+	project, views, err := h.resolveProjectAndViews(ctx, client, input)
 	if err != nil {
 		return h.buildErrorResult(err.Error()), ListViewsOutput{}, err
 	}
 
+	filteredViews := h.filterViewsByKind(views, input.ViewKind)
+
+	return h.formatListViewsOutput(filteredViews, project)
+}
+
+func (h *Handlers) resolveProjectAndViews(ctx context.Context, client *vikunja.Client, input ListViewsInput) (*Project, []*vikunja.ProjectView, error) {
+	project, err := findProjectByIDOrTitle(ctx, client, input.ProjectID, input.ProjectTitle)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	views, err := client.GetProjectViews(ctx, project.ID)
 	if err != nil {
-		return h.buildErrorResult(err.Error()), ListViewsOutput{}, fmt.Errorf("failed to get project views: %w", err)
+		return nil, nil, fmt.Errorf("failed to get project views: %w", err)
 	}
 
-	var filteredViews []vikunja.ProjectView
-	if input.ViewKind != "" {
-		viewKind := vikunja.ViewKind(input.ViewKind)
-		for _, v := range views {
-			if v.ViewKind == viewKind {
-				filteredViews = append(filteredViews, v)
-			}
+	return project, views, nil
+}
+
+func (h *Handlers) filterViewsByKind(views []*vikunja.ProjectView, viewKind string) []*vikunja.ProjectView {
+	if viewKind == "" {
+		return views
+	}
+
+	kind := vikunja.ViewKind(viewKind)
+	filtered := make([]*vikunja.ProjectView, 0, len(views))
+	for _, v := range views {
+		if v.ViewKind == kind {
+			filtered = append(filtered, v)
 		}
-	} else {
-		filteredViews = views
 	}
+	return filtered
+}
 
+func (h *Handlers) formatListViewsOutput(views []*vikunja.ProjectView, project *Project) (*mcp.CallToolResult, ListViewsOutput, error) {
 	output := ListViewsOutput{
 		Project: *project,
-		Views:   toViews(filteredViews),
+		Views:   toViews(views),
 	}
 
-	// Convert handlers.ListViewsOutput to vikunja.ViewsOutput for formatting
 	vikunjaOutput := vikunja.ViewsOutput{
 		Project: vikunja.Project{
 			ID:    output.Project.ID,
 			Title: output.Project.Title,
-			// Note: handlers.Project has limited fields
 		},
-		Views: filteredViews, // Already in vikunja format
+		Views: views,
 	}
 
 	data, err := h.deps.OutputFormatter.Format(vikunjaOutput)

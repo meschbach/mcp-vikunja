@@ -19,9 +19,9 @@ import (
 
 // Client is the subset of vikunja.Client methods required for resolution.
 type Client interface {
-	GetProjects(ctx context.Context) ([]vikunja.Project, error)
-	GetProjectViews(ctx context.Context, projectID int64) ([]vikunja.ProjectView, error)
-	GetViewBuckets(ctx context.Context, projectID int64, viewID int64) ([]vikunja.Bucket, error)
+	GetProjects(ctx context.Context) ([]*vikunja.Project, error)
+	GetProjectViews(ctx context.Context, projectID int64) ([]*vikunja.ProjectView, error)
+	GetViewBuckets(ctx context.Context, projectID int64, viewID int64) ([]*vikunja.Bucket, error)
 	GetProject(ctx context.Context, projectID int64) (*vikunja.Project, error)
 }
 
@@ -66,6 +66,10 @@ func findProjectByIDOrTitle(ctx context.Context, client Client, projectID, proje
 		return nil, fmt.Errorf("either projectID or projectTitle must be specified")
 	}
 
+	return findProjectByTitle(ctx, client, projectTitle)
+}
+
+func findProjectByTitle(ctx context.Context, client Client, title string) (*Project, error) {
 	projects, err := client.GetProjects(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list projects: %w", err)
@@ -73,7 +77,7 @@ func findProjectByIDOrTitle(ctx context.Context, client Client, projectID, proje
 
 	var matches []Project
 	for _, p := range projects {
-		if p.Title == projectTitle {
+		if p.Title == title {
 			matches = append(matches, Project{
 				ID:    p.ID,
 				Title: p.Title,
@@ -86,10 +90,10 @@ func findProjectByIDOrTitle(ctx context.Context, client Client, projectID, proje
 		for _, p := range projects {
 			projectTitles = append(projectTitles, p.Title)
 		}
-		return nil, enhancedProjectNotFoundError(projectTitle, projectTitles)
+		return nil, enhancedProjectNotFoundError(title, projectTitles)
 	}
 	if len(matches) > 1 {
-		return nil, fmt.Errorf("multiple projects found with title %q, please use project ID", projectTitle)
+		return nil, fmt.Errorf("multiple projects found with title %q, please use project ID", title)
 	}
 	return &matches[0], nil
 }
@@ -103,8 +107,8 @@ func FindKanbanView(ctx context.Context, client Client, projectID int64) (*vikun
 	}
 
 	for _, view := range views {
-		if view.ViewKind == vikunja.ViewKindKanban {
-			return &view, nil
+		if view.ViewKind == string(vikunja.ViewKindKanban) {
+			return view, nil
 		}
 	}
 
@@ -115,49 +119,56 @@ func FindKanbanView(ctx context.Context, client Client, projectID int64) (*vikun
 // If bucketInput is numeric, returns that ID without validation.
 // If bucketInput is non-numeric, it must match exactly one bucket title in the project's Kanban view.
 func FindBucketByIDOrTitle(ctx context.Context, client Client, projectID int64, bucketInput string) (*int64, error) {
-	// Try to parse as ID first
 	if id, err := strconv.ParseInt(bucketInput, 10, 64); err == nil && id > 0 {
 		return &id, nil
 	}
 
-	// Must resolve by title - need Kanban view
+	bucket, err := findBucketByTitle(ctx, client, projectID, bucketInput)
+	if err != nil {
+		return nil, err
+	}
+	return &bucket.ID, nil
+}
+
+func findBucketByTitle(ctx context.Context, client Client, projectID int64, title string) (*vikunja.Bucket, error) {
 	kanbanView, err := FindKanbanView(ctx, client, projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get buckets for the Kanban view
 	buckets, err := client.GetViewBuckets(ctx, projectID, kanbanView.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get buckets for kanban view: %w", err)
 	}
 
-	// Search for exact title match (case-sensitive)
-	var matches []vikunja.Bucket
+	var matches []*vikunja.Bucket
 	for _, b := range buckets {
-		if b.Title == bucketInput {
+		if b.Title == title {
 			matches = append(matches, b)
 		}
 	}
 
 	if len(matches) == 0 {
-		// Extract bucket names for error message
 		bucketNames := make([]string, len(buckets))
 		for i, b := range buckets {
 			bucketNames[i] = b.Title
 		}
-		// Get project title for better error message
-		proj, err := client.GetProject(ctx, projectID)
-		if err != nil {
-			proj = &vikunja.Project{Title: fmt.Sprintf("Project %d", projectID)}
-		}
-		return nil, enhancedBucketNotFoundError(bucketInput, proj.Title, bucketNames)
+		projTitle := getProjectTitle(ctx, client, projectID)
+		return nil, enhancedBucketNotFoundError(title, projTitle, bucketNames)
 	}
 	if len(matches) > 1 {
-		return nil, fmt.Errorf("multiple buckets found with title %q in Kanban view, please use bucket ID", bucketInput)
+		return nil, fmt.Errorf("multiple buckets found with title %q in Kanban view, please use bucket ID", title)
 	}
 
-	return &matches[0].ID, nil
+	return matches[0], nil
+}
+
+func getProjectTitle(ctx context.Context, client Client, projectID int64) string {
+	proj, err := client.GetProject(ctx, projectID)
+	if err != nil {
+		return fmt.Sprintf("Project %d", projectID)
+	}
+	return proj.Title
 }
 
 // enhancedProjectNotFoundError provides contextual error message with available options.
@@ -175,7 +186,7 @@ func enhancedProjectNotFoundError(title string, availableProjects []string) erro
 }
 
 // enhancedBucketNotFoundError provides contextual error message with available buckets in the Kanban view.
-func enhancedBucketNotFoundError(bucket string, projectTitle string, availableBuckets []string) error {
+func enhancedBucketNotFoundError(bucket, projectTitle string, availableBuckets []string) error {
 	var suggestion string
 	if len(availableBuckets) > 0 {
 		if len(availableBuckets) <= 3 {

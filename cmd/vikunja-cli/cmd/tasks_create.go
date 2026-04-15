@@ -27,70 +27,78 @@ var tasksCreateCmd = &cobra.Command{
 	Long:  `Create a new Vikunja task with optional description and project/bucket assignment.`,
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
-		title := args[0]
-		description := ""
-		if len(args) > 1 {
-			description = args[1]
-		}
-
-		// Resolve project (default to "Inbox")
-		projectTitle := tasksCreateProjectFlag
-		if projectTitle == "" {
-			projectTitle = "Inbox"
-		}
-
-		project, err := resolution.ResolveProject(ctx, client, projectTitle)
-		if err != nil {
-			return fmt.Errorf("failed to resolve project: %w", err)
-		}
-
-		// Resolve bucket if specified
-		var bucketID *int64
-		if tasksCreateBucketFlag != "" {
-			bucket, err := resolution.FindBucketByIDOrTitle(ctx, client, project.ID, tasksCreateBucketFlag)
-			if err != nil {
-				return fmt.Errorf("failed to resolve bucket: %w", err)
-			}
-			bucketID = bucket
-		}
-
-		// Create task
-		logger.Debug("creating task", "title", title, "project_id", project.ID, "bucket_id", bucketID)
-		task, err := client.CreateTask(ctx, title, project.ID, description, bucketID, time.Time{})
-		if err != nil {
-			return fmt.Errorf("failed to create task: %w", err)
-		}
-
-		// Always fetch bucket info for output
-		bucketInfo, err := client.GetTaskBuckets(ctx, task.ID)
-		if err != nil {
-			logger.Debug("failed to get bucket info", "task_id", task.ID, "error", err)
-		}
-
-		// Format output
-		formatter := vikunja.NewFormatter(!noColor, outputWriter)
-
-		if jsonFmt {
-			if bucketInfo != nil {
-				taskWithBuckets := struct {
-					Task    vikunja.Task            `json:"task"`
-					Buckets *vikunja.TaskBucketInfo `json:"buckets,omitempty"`
-				}{
-					Task:    *task,
-					Buckets: bucketInfo,
-				}
-				return formatter.FormatAsJSON(taskWithBuckets)
-			}
-			return formatter.FormatTaskAsJSON(task)
-		}
-
-		if markdown {
-			markdownOutput := formatter.FormatTaskAsMarkdown(*task)
-			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
-			return nil
-		}
-
-		return formatter.FormatTaskWithBuckets(task, bucketInfo)
+		return createTask(cmd.Context(), args)
 	},
+}
+
+func createTask(ctx context.Context, args []string) error {
+	title := args[0]
+	description := getDescription(args)
+
+	project, err := resolveProject(ctx)
+	if err != nil {
+		return err
+	}
+
+	bucketID, err := resolveBucket(ctx, project.ID)
+	if err != nil {
+		return err
+	}
+
+	task, err := executeCreateTask(ctx, title, project.ID, description, bucketID)
+	if err != nil {
+		return err
+	}
+
+	return formatTaskOutput(task)
+}
+
+func getDescription(args []string) string {
+	if len(args) > 1 {
+		return args[1]
+	}
+	return ""
+}
+
+func resolveProject(ctx context.Context) (*resolution.Project, error) {
+	projectTitle := tasksCreateProjectFlag
+	if projectTitle == "" {
+		projectTitle = "Inbox"
+	}
+	project, err := resolution.ResolveProject(ctx, client, projectTitle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve project: %w", err)
+	}
+	return project, nil
+}
+
+func resolveBucket(ctx context.Context, projectID int64) (*int64, error) {
+	if tasksCreateBucketFlag == "" {
+		return nil, nil
+	}
+	bucket, err := resolution.FindBucketByIDOrTitle(ctx, client, projectID, tasksCreateBucketFlag)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve bucket: %w", err)
+	}
+	return bucket, nil
+}
+
+func executeCreateTask(ctx context.Context, title string, projectID int64, description string, bucketID *int64) (*vikunja.Task, error) {
+	logger.Debug("creating task", "title", title, "project_id", projectID, "bucket_id", bucketID)
+	task, err := client.CreateTask(ctx, title, projectID, description, bucketID, time.Time{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task: %w", err)
+	}
+	return task, nil
+}
+
+func formatTaskOutput(task *vikunja.Task) error {
+	formatter := vikunja.NewFormatter(!noColor, outputWriter)
+	if jsonFmt {
+		return formatter.FormatTaskAsJSON(task)
+	}
+	if markdown {
+		return writeAll(outputWriter, formatter.FormatTaskAsMarkdown(task))
+	}
+	return formatter.FormatTaskAsJSON(task)
 }

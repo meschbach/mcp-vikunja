@@ -1,4 +1,3 @@
-// Package handlers provides MCP tool handlers for Vikunja integration.
 package handlers
 
 import (
@@ -99,7 +98,7 @@ func (h *Handlers) findProjectByTitle(ctx context.Context, client *vikunja.Clien
 }
 
 // resolveViewByValue resolves view from ID (integer string) or title
-func (h *Handlers) resolveViewByValue(ctx context.Context, client *vikunja.Client, projectID int64, value string) (int64, string, error) {
+func (h *Handlers) resolveViewByValue(ctx context.Context, client *vikunja.Client, projectID int64, value string) (viewID int64, viewTitle string, err error) {
 	views, err := client.GetProjectViews(ctx, projectID)
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to get project views: %w", err)
@@ -122,7 +121,7 @@ func (h *Handlers) resolveViewByValue(ctx context.Context, client *vikunja.Clien
 }
 
 // resolveViewByTitle resolves view by title
-func (h *Handlers) resolveViewByTitle(viewTitle string, views []vikunja.ProjectView, targetProjectID int64) (int64, string, error) {
+func (h *Handlers) resolveViewByTitle(viewTitle string, views []*vikunja.ProjectView, targetProjectID int64) (viewID int64, title string, err error) {
 	for _, v := range views {
 		if v.Title == viewTitle {
 			return v.ID, v.Title, nil
@@ -133,7 +132,7 @@ func (h *Handlers) resolveViewByTitle(viewTitle string, views []vikunja.ProjectV
 }
 
 // resolveBucketByValue resolves bucket from ID (integer string) or title
-func (h *Handlers) resolveBucketByValue(ctx context.Context, client *vikunja.Client, projectID, viewID int64, value string) (int64, string, error) {
+func (h *Handlers) resolveBucketByValue(ctx context.Context, client *vikunja.Client, projectID, viewID int64, value string) (bucketID int64, bucketTitle string, err error) {
 	if value == "" {
 		return 0, "", nil
 	}
@@ -143,6 +142,10 @@ func (h *Handlers) resolveBucketByValue(ctx context.Context, client *vikunja.Cli
 		return 0, "", fmt.Errorf("failed to get view buckets: %w", err)
 	}
 
+	return h.findBucketByIDOrTitle(buckets, value, viewID)
+}
+
+func (h *Handlers) findBucketByIDOrTitle(buckets []*vikunja.Bucket, value string, viewID int64) (bucketID int64, bucketTitle string, err error) {
 	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
 		for _, b := range buckets {
 			if b.ID == id {
@@ -161,49 +164,59 @@ func (h *Handlers) resolveBucketByValue(ctx context.Context, client *vikunja.Cli
 }
 
 // getViewTasks gets view tasks with optional bucket filtering
-func (h *Handlers) getViewTasks(ctx context.Context, client *vikunja.Client, targetProjectID, targetViewID int64, targetBucketID int64, targetBucketTitle, targetViewTitle string) (*vikunja.ViewTasksResponse, error) {
-	viewTasksResp, err := client.GetViewTasks(ctx, targetProjectID, targetViewID)
+func (h *Handlers) getViewTasks(ctx context.Context, client *vikunja.Client, targetProjectID, targetViewID, targetBucketID int64, targetBucketTitle, targetViewTitle string) (*vikunja.ViewTasksResponse, error) {
+	buckets, err := client.GetViewBuckets(ctx, targetProjectID, targetViewID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get view buckets: %w", err)
+	}
+
+	tasks, err := client.GetViewTasks(ctx, targetProjectID, targetViewID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get view tasks: %w", err)
 	}
 
-	if targetBucketID != 0 || targetBucketTitle != "" {
-		return h.filterViewTasksByBucket(viewTasksResp, targetBucketID, targetBucketTitle, targetViewTitle)
+	response := &vikunja.ViewTasksResponse{
+		Buckets: buckets,
+		Tasks:   tasks,
 	}
 
-	return viewTasksResp, nil
+	if targetBucketID != 0 || targetBucketTitle != "" {
+		return h.filterViewTasksByBucket(response, buckets, targetBucketID, targetBucketTitle, targetViewTitle)
+	}
+
+	return response, nil
 }
 
 // filterViewTasksByBucket filters view tasks by bucket
-func (h *Handlers) filterViewTasksByBucket(viewTasksResp *vikunja.ViewTasksResponse, targetBucketID int64, targetBucketTitle, targetViewTitle string) (*vikunja.ViewTasksResponse, error) {
-	if len(viewTasksResp.Buckets) == 0 && len(viewTasksResp.Tasks) > 0 {
+func (h *Handlers) filterViewTasksByBucket(viewTasksResp *vikunja.ViewTasksResponse, buckets []*vikunja.Bucket, targetBucketID int64, targetBucketTitle, targetViewTitle string) (*vikunja.ViewTasksResponse, error) {
+	if len(buckets) == 0 && len(viewTasksResp.Tasks) > 0 {
 		return nil, fmt.Errorf("bucket filtering not supported for non-kanban views")
 	}
 
-	foundBucket, err := h.findBucket(viewTasksResp.Buckets, targetBucketID, targetBucketTitle, targetViewTitle)
+	foundBucket, err := h.findBucket(buckets, targetBucketID, targetBucketTitle, targetViewTitle)
 	if err != nil {
 		return nil, err
 	}
 
-	viewTasksResp.Buckets = []vikunja.Bucket{*foundBucket}
+	viewTasksResp.Buckets = []*vikunja.Bucket{foundBucket}
 	return viewTasksResp, nil
 }
 
 // findBucket finds a bucket by ID or title
-func (h *Handlers) findBucket(buckets []vikunja.Bucket, targetBucketID int64, targetBucketTitle, targetViewTitle string) (*vikunja.Bucket, error) {
+func (h *Handlers) findBucket(buckets []*vikunja.Bucket, targetBucketID int64, targetBucketTitle, targetViewTitle string) (*vikunja.Bucket, error) {
 	if targetBucketID != 0 {
-		for i := range buckets {
-			if buckets[i].ID == targetBucketID {
-				return &buckets[i], nil
+		for _, b := range buckets {
+			if b.ID == targetBucketID {
+				return b, nil
 			}
 		}
 		return nil, fmt.Errorf("bucket with ID %d not found in view %q", targetBucketID, targetViewTitle)
 	}
 
 	if targetBucketTitle != "" {
-		for i := range buckets {
-			if buckets[i].Title == targetBucketTitle {
-				return &buckets[i], nil
+		for _, b := range buckets {
+			if b.Title == targetBucketTitle {
+				return b, nil
 			}
 		}
 		return nil, fmt.Errorf("bucket with title %q not found in view %q", targetBucketTitle, targetViewTitle)

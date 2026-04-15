@@ -132,11 +132,11 @@ func TestHTTPServer_Run_ContextCancellation(t *testing.T) {
 	}
 
 	// Create a context that will be canceled quickly
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	testCtx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 
 	// Run should return nil after graceful shutdown
-	err := server.Run(ctx)
+	err := server.Run(testCtx)
 	assert.NoError(t, err)
 }
 

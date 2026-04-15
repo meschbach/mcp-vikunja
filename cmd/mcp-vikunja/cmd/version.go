@@ -1,4 +1,3 @@
-// Package cmd provides cobra commands for the MCP Vikunja server.
 package cmd
 
 import (
@@ -29,7 +28,7 @@ var versionCmd = &cobra.Command{
 This includes the version number, git commit hash, build time, and Go runtime
 version. Useful for debugging and ensuring you're running the expected build.`,
 	Example: `  mcp-vikunja version`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, _ []string) {
 		cmd.Printf("mcp-vikunja version %s\n", versionInfo.Version)
 		cmd.Printf("Commit:      %s\n", versionInfo.Commit)
 		cmd.Printf("Built:       %s\n", versionInfo.BuildTime)

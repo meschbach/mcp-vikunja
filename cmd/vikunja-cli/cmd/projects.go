@@ -3,9 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strconv"
 
-	"github.com/fatih/color"
 	"github.com/meschbach/mcp-vikunja/pkg/vikunja"
 	"github.com/spf13/cobra"
 )
@@ -26,71 +24,31 @@ var projectsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all projects",
 	Long:  `List all projects you have access to.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
-
-		logger.Debug("listing projects")
-		projects, err := client.GetProjects(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list projects: %w", err)
-		}
-
-		formatter := vikunja.NewFormatter(!noColor, outputWriter)
-
-		if jsonFmt {
-			return formatter.FormatProjectsAsJSON(projects)
-		}
-
-		if markdown {
-			markdownOutput := formatter.FormatProjectsAsMarkdown(projects)
-			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
-			return nil
-		}
-
-		return formatter.FormatProjects(projects)
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return listProjects(cmd.Context())
 	},
 }
 
-var projectsGetCmd = &cobra.Command{
-	Use:   "get [id]",
-	Short: "Get a project by ID",
-	Long:  `Retrieve detailed information about a specific project.`,
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		id, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return fmt.Errorf("invalid project ID: %s (must be a number)", args[0])
-		}
+var projectsGetCmd = newGetCmd("project", func(ctx context.Context, id int64) (interface{}, error) {
+	return client.GetProject(ctx, id)
+}, true)
 
-		ctx := context.Background()
+func listProjects(ctx context.Context) error {
+	logger.Debug("listing projects")
+	projects, err := client.GetProjects(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list projects: %w", err)
+	}
 
-		logger.Debug("getting project", "id", id)
-		project, err := client.GetProject(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to get project %d: %w", id, err)
-		}
+	formatter := vikunja.NewFormatter(!noColor, outputWriter)
 
-		if project == nil {
-			if !noColor {
-				color.Red("Project not found: %d\n", id)
-			} else {
-				_, _ = fmt.Fprintf(outputWriter, "Project not found: %d\n", id)
-			}
-			return nil
-		}
+	if jsonFmt {
+		return formatter.FormatProjectsAsJSON(projects)
+	}
 
-		formatter := vikunja.NewFormatter(!noColor, outputWriter)
+	if markdown {
+		return writeAll(outputWriter, formatter.FormatProjectsAsMarkdown(projects))
+	}
 
-		if jsonFmt {
-			return formatter.FormatProjectAsJSON(project)
-		}
-
-		if markdown {
-			markdownOutput := formatter.FormatProjectAsMarkdown(*project)
-			_, _ = fmt.Fprintf(outputWriter, "%s", markdownOutput)
-			return nil
-		}
-
-		return formatter.FormatProject(project)
-	},
+	return formatter.FormatProjects(projects)
 }
