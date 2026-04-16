@@ -1,4 +1,3 @@
-// Package cmd provides cobra commands for the MCP Vikunja server.
 package cmd
 
 import (
@@ -29,22 +28,15 @@ func init() {
 	rootCmd.AddCommand(healthCmd)
 }
 
-func runHealth(cmd *cobra.Command, args []string) error {
-	// Get configuration from flags or environment
-	host := cmd.Flag("vikunja-host").Value.String()
-	if host == "" {
-		host = os.Getenv("VIKUNJA_HOST")
-	}
-	if host == "" {
-		return fmt.Errorf("vikunja host is required (use --vikunja-host or VIKUNJA_HOST)")
+func runHealth(cmd *cobra.Command, _ []string) error {
+	host, err := resolveVikunjaHost(cmd)
+	if err != nil {
+		return err
 	}
 
-	token := cmd.Flag("vikunja-token").Value.String()
-	if token == "" {
-		token = os.Getenv("VIKUNJA_TOKEN")
-	}
-	if token == "" {
-		return fmt.Errorf("vikunja token is required (use --vikunja-token or VIKUNJA_TOKEN)")
+	token, err := resolveVikunjaToken(cmd)
+	if err != nil {
+		return err
 	}
 
 	cmd.Printf("Testing connection to Vikunja at: %s\n", host)
@@ -56,6 +48,7 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	}
 
 	// Test connection by fetching projects
+	//nolint
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -80,4 +73,26 @@ func runHealth(cmd *cobra.Command, args []string) error {
 
 	cmd.Printf("✓ All health checks passed - MCP server should work correctly\n")
 	return nil
+}
+
+func resolveVikunjaHost(cmd *cobra.Command) (string, error) {
+	host := cmd.Flag("vikunja-host").Value.String()
+	if host == "" {
+		host = os.Getenv("VIKUNJA_HOST")
+	}
+	if host == "" {
+		return "", fmt.Errorf("vikunja host is required (use --vikunja-host or VIKUNJA_HOST)")
+	}
+	return host, nil
+}
+
+func resolveVikunjaToken(cmd *cobra.Command) (string, error) {
+	token := cmd.Flag("vikunja-token").Value.String()
+	if token == "" {
+		token = os.Getenv("VIKUNJA_TOKEN")
+	}
+	if token == "" {
+		return "", fmt.Errorf("vikunja token is required (use --vikunja-token or VIKUNJA_TOKEN)")
+	}
+	return token, nil
 }

@@ -1,4 +1,3 @@
-// Package handlers provides MCP tool handlers for Vikunja integration.
 package handlers
 
 import (

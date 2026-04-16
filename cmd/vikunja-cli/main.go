@@ -1,3 +1,4 @@
+// Package main is the entry point for the vikunja-cli command-line tool.
 package main
 
 import (

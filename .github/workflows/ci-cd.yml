@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.25'
+  GO_VERSION: '1.26'
 
 jobs:
   validate:
@@ -54,22 +54,64 @@ jobs:
           fi
           echo "✅ Imports formatting OK"
 
-#      - name: Run golangci-lint
-#        uses: golangci/golangci-lint-action@v6
-#        with:
-#          version: latest
-#          args: --timeout=10m
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=10m
 
       - name: Run go vet
         run: go vet ./...
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git diff)" ]; then
+            echo "❌ go mod tidy produced changes. Run 'go mod tidy' and commit."
+            git diff
+            exit 1
+          fi
+          echo "✅ go mod tidy OK"
 
   test:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: vikunja
+          POSTGRES_USER: vikunja
+          POSTGRES_PASSWORD: vikunja
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vikunja"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        volumes:
+          - pgdata:/var/lib/postgresql/data
+      vikunja:
+        image: vikunja/vikunja:latest
+        env:
+          VIKUNJA_SERVICE_JWTSECRET: devsecret
+          VIKUNJA_SERVICE_TIMEZONE: UTC
+          VIKUNJA_DATABASE_TYPE: postgres
+          VIKUNJA_DATABASE_HOST: localhost
+          VIKUNJA_DATABASE_PASSWORD: vikunja
+          VIKUNJA_DATABASE_DATABASE: vikunja
+        ports:
+          - 3456:3456
+        options: >-
+          --health-cmd "curl -f http://localhost:3456/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       matrix:
-        go-version: ['1.25', '1.26']
+        go-version: ['1.26']
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -82,30 +124,29 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests with coverage
+      - name: Create test user and get token
         run: |
-          # Check if internal and pkg directories exist
-          has_internal=false
-          has_pkg=false
-          coverage_packages=""
+          # Wait for Vikunja to be ready
+          for i in {1..30}; do
+            if curl -sf http://localhost:3456/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          
+          # Create user and get token
+          curl -s -X POST http://localhost:3456/v1/user \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@example.com","password":"testpass123","username":"testuser"}' || true
+          
+          TOKEN=$(curl -s -X POST http://localhost:3456/v1/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@example.com","password":"testpass123"}' | jq -r '.token')
+          echo "VIKUNJA_HOST=http://localhost:3456" >> $GITHUB_ENV
+          echo "VIKUNJA_TOKEN=$TOKEN" >> $GITHUB_ENV
 
-          if [ -d "internal" ]; then
-            has_internal=true
-            coverage_packages="${coverage_packages} ./internal/..."
-          fi
-
-          if [ -d "pkg" ]; then
-            has_pkg=true
-            coverage_packages="${coverage_packages} ./pkg/..."
-          fi
-
-          if [ -n "$coverage_packages" ]; then
-            echo "📊 Running coverage on: $coverage_packages"
-            go test -race -coverprofile=coverage.out $coverage_packages
-          else
-            echo "📊 Running coverage on all packages"
-            go test -race -coverprofile=coverage.out ./...
-          fi
+      - name: Run tests with integration tag
+        run: go test -race -tags=integration -coverprofile=coverage.out ./...
 
       - name: Verify coverage threshold
         run: |
@@ -124,7 +165,7 @@ jobs:
     needs: [validate, test]
     strategy:
       matrix:
-        go-version: ['1.25', '1.26']
+        go-version: ['1.26']
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -133,8 +174,6 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
       - name: Build mcp-vikunja
         run: go build -o bin/mcp-vikunja ./cmd/mcp-vikunja
 

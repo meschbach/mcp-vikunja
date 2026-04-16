@@ -1,4 +1,3 @@
-// Package handlers provides MCP tool handlers for Vikunja integration.
 package handlers
 
 import (
@@ -22,58 +21,74 @@ func (h *Handlers) getTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, i
 		return h.buildErrorResult(err.Error()), GetTaskOutput{}, err
 	}
 
-	task, err := client.GetTask(ctx, taskID) // This task already has buckets expanded
+	task, err := client.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, GetTaskOutput{}, fmt.Errorf("failed to get task: %w", err)
 	}
 
 	var bucketInfo *vikunja.TaskBucketInfo
-	if input.IncludeBuckets { // Default to true, allow explicit false
-		// Reuse logic from GetTaskBuckets but with already fetched task
-		views, err := client.GetProjectViews(ctx, task.ProjectID)
+	if input.IncludeBuckets {
+		bucketInfo, err = h.buildTaskBucketInfo(ctx, client, task)
 		if err != nil {
-			h.deps.Logger.Warn("failed to get project views for task",
+			h.deps.Logger.Warn("failed to get bucket info for task",
 				slog.Int64("task_id", taskID),
 				slog.Any("error", err))
-		} else {
-			var taskViews []vikunja.TaskViewInfo
-			for _, view := range views {
-				viewInfo := vikunja.TaskViewInfo{
-					ViewID:    view.ID,
-					ViewTitle: view.Title,
-					ViewKind:  view.ViewKind,
-				}
-
-				for _, bucket := range task.Buckets {
-					if bucket.ProjectViewID == view.ID {
-						bID := bucket.ID
-						bTitle := bucket.Title
-						viewInfo.BucketID = &bID
-						viewInfo.BucketTitle = &bTitle
-						viewInfo.Position = bucket.Position
-						if view.DoneBucketID == bucket.ID {
-							viewInfo.IsDoneBucket = true
-						}
-						break
-					}
-				}
-				taskViews = append(taskViews, viewInfo)
-			}
-			bucketInfo = &vikunja.TaskBucketInfo{
-				TaskID: taskID,
-				Views:  taskViews,
-			}
 		}
 	}
 
+	return h.formatGetTaskOutput(task, bucketInfo)
+}
+
+func (h *Handlers) buildTaskBucketInfo(ctx context.Context, client *vikunja.Client, task *vikunja.Task) (*vikunja.TaskBucketInfo, error) {
+	views, err := client.GetProjectViews(ctx, task.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+
+	taskViews := make([]vikunja.TaskViewInfo, 0, len(views))
+	for _, view := range views {
+		viewInfo := h.buildViewInfoForTask(view, task)
+		taskViews = append(taskViews, viewInfo)
+	}
+
+	return &vikunja.TaskBucketInfo{
+		TaskID: task.ID,
+		Views:  taskViews,
+	}, nil
+}
+
+func (h *Handlers) buildViewInfoForTask(view *vikunja.ProjectView, task *vikunja.Task) vikunja.TaskViewInfo {
+	viewInfo := vikunja.TaskViewInfo{
+		ViewID:    view.ID,
+		ViewTitle: view.Title,
+		ViewKind:  view.ViewKind,
+	}
+
+	for _, bucket := range task.Buckets {
+		if bucket.ProjectViewID != view.ID {
+			continue
+		}
+		bID := bucket.ID
+		bTitle := bucket.Title
+		viewInfo.BucketID = &bID
+		viewInfo.BucketTitle = &bTitle
+		viewInfo.Position = bucket.Position
+		if view.DoneBucketID == bucket.ID {
+			viewInfo.IsDoneBucket = true
+		}
+		break
+	}
+	return viewInfo
+}
+
+func (h *Handlers) formatGetTaskOutput(task *vikunja.Task, bucketInfo *vikunja.TaskBucketInfo) (*mcp.CallToolResult, GetTaskOutput, error) {
 	output := GetTaskOutput{
-		Task: toTask(*task),
+		Task: toTask(task),
 	}
 	if bucketInfo != nil {
 		output.Buckets = bucketInfo
 	}
 
-	// Convert handlers.GetTaskOutput to vikunja.TaskOutput for formatting
 	vikunjaOutput := vikunja.TaskOutput{
 		Task: vikunja.Task{
 			ID:          output.Task.ID,
@@ -81,9 +96,9 @@ func (h *Handlers) getTaskHandler(ctx context.Context, _ *mcp.CallToolRequest, i
 			Description: output.Task.Description,
 			ProjectID:   output.Task.ProjectID,
 			Done:        output.Task.Done,
-			DueDate:     parseTime(output.Task.DueDate),
-			Created:     parseTime(output.Task.Created),
-			Updated:     parseTime(output.Task.Updated),
+			DueDate:     output.Task.DueDate,
+			Created:     output.Task.Created,
+			Updated:     output.Task.Updated,
 			Buckets:     toVikunjaBuckets(output.Task.Buckets),
 			Position:    output.Task.Position,
 		},
@@ -109,36 +124,42 @@ func (h *Handlers) listBucketsHandler(ctx context.Context, _ *mcp.CallToolReques
 		return nil, ListBucketsOutput{}, err
 	}
 
-	// Apply defaults
-	projectTitle := input.ProjectTitle
-	if projectTitle == "" {
-		projectTitle = "Inbox"
-	}
-	viewTitle := input.ViewTitle
-	if viewTitle == "" {
-		viewTitle = "Kanban"
-	}
-
-	project, err := findProjectByIDOrTitle(ctx, client, "", projectTitle)
+	project, view, buckets, err := h.resolveBucketParams(ctx, client, input)
 	if err != nil {
 		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, err
 	}
 
+	return h.formatBucketsOutput(buckets, project, view)
+}
+
+func (h *Handlers) resolveBucketParams(ctx context.Context, client *vikunja.Client, input ListBucketsInput) (project *Project, v *vikunja.ProjectView, buckets []*vikunja.Bucket, err error) {
+	projectTitle := coalesceString(input.ProjectTitle, "Inbox")
+	viewTitle := coalesceString(input.ViewTitle, "Kanban")
+
+	project, err = findProjectByIDOrTitle(ctx, client, "", projectTitle)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	views, err := client.GetProjectViews(ctx, project.ID)
 	if err != nil {
-		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, fmt.Errorf("failed to get project views: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get project views: %w", err)
 	}
 
-	foundView, err := findViewByName(views, viewTitle, false, project.Title)
+	v, err = findViewByName(views, viewTitle, false, project.Title)
 	if err != nil {
-		return h.buildErrorResult(err.Error()), ListBucketsOutput{}, fmt.Errorf("%v in project %q", err, project.Title)
+		return nil, nil, nil, fmt.Errorf("%v in project %q", err, project.Title)
 	}
 
-	buckets, err := client.GetViewBuckets(ctx, project.ID, foundView.ID)
+	buckets, err = client.GetViewBuckets(ctx, project.ID, v.ID)
 	if err != nil {
-		return nil, ListBucketsOutput{}, fmt.Errorf("failed to get buckets: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get buckets: %w", err)
 	}
 
+	return project, v, buckets, nil
+}
+
+func (h *Handlers) formatBucketsOutput(buckets []*vikunja.Bucket, _ *Project, _ *vikunja.ProjectView) (*mcp.CallToolResult, ListBucketsOutput, error) {
 	data, err := h.deps.OutputFormatter.Format(buckets)
 	if err != nil {
 		return nil, ListBucketsOutput{}, fmt.Errorf("failed to format response: %w", err)
@@ -149,4 +170,11 @@ func (h *Handlers) listBucketsHandler(ctx context.Context, _ *mcp.CallToolReques
 			&mcp.TextContent{Text: string(data)},
 		},
 	}, ListBucketsOutput{Buckets: toBuckets(buckets)}, nil
+}
+
+func coalesceString(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

@@ -1,0 +1,133 @@
+services:
+  # Official Vikunja container
+  vikunja:
+    image: vikunja/vikunja:latest
+    container_name: mcp-vikunja-vikunja
+    ports:
+      - "3456:3456"  # Vikunja API/web interface
+    environment:
+      - VIKUNJA_DATABASE_TYPE=postgres
+      - VIKUNJA_DATABASE_HOST=vikunja-db
+      - VIKUNJA_DATABASE_DATABASE=vikunja
+      - VIKUNJA_DATABASE_USER=vikunja
+      - VIKUNJA_DATABASE_PASSWORD=vikunja
+      - VIKUNJA_SERVICE_PUBLICURL=http://localhost:3456
+      - VIKUNJA_SERVICE_SIGNUPS=true
+      - VIKUNJA_SERVICE_INVITATIONS=true
+      - VIKUNJA_SERVICE_DEFAULTUSERROLE=user
+    user: "1000:1000"
+    volumes:
+      - ./data/vikunja-files:/app/vikunja/files
+    networks:
+      - mcp-vikunja-network
+    depends_on:
+      vikunja-db:
+        condition: service_healthy
+
+  # PostgreSQL database for Vikunja
+  vikunja-db:
+    image: postgres:15-alpine
+    container_name: mcp-vikunja-db
+    environment:
+      - POSTGRES_DB=vikunja
+      - POSTGRES_USER=vikunja
+      - POSTGRES_PASSWORD=vikunja
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
+    volumes:
+      - vikunja_db_data:/var/lib/postgresql/data
+    networks:
+      - mcp-vikunja-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vikunja -d vikunja"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MCP Vikunja server
+  mcp-vikunja-server:
+    build:
+      context: .
+      dockerfile: cmd/mcp-vikunja/Dockerfile
+    container_name: mcp-vikunja-server
+    ports:
+      - "8080:8080"  # HTTP transport
+    environment:
+      - VIKUNJA_HOST=http://vikunja:3456
+      - VIKUNJA_TOKEN=dev-token-for-local-testing
+      - MCP_TRANSPORT=http
+      - MCP_HTTP_HOST=0.0.0.0
+      - MCP_HTTP_PORT=8080
+      - MCP_HTTP_SESSION_TIMEOUT=1h
+      - MCP_HTTP_STATELESS=false
+    volumes:
+      - ./:/app  # Mount source for development
+    networks:
+      - mcp-vikunja-network
+    depends_on:
+      vikunja:
+        condition: service_started
+    restart: unless-stopped
+    command: ["server"]
+
+  # Development server (for hot reloading during development)
+  mcp-vikunja-dev:
+    build:
+      context: .
+      dockerfile: cmd/mcp-vikunja/Dockerfile
+    container_name: mcp-vikunja-dev
+    environment:
+      - VIKUNJA_HOST=http://vikunja:3456
+      - VIKUNJA_TOKEN=dev-token-for-local-testing
+      - MCP_TRANSPORT=stdio
+      - VIKUNJA_OUTPUT_FORMAT=markdown
+    volumes:
+      - .:/app
+      - go_modules:/go/pkg/mod
+    networks:
+      - mcp-vikunja-network
+    depends_on:
+      vikunja:
+        condition: service_started
+    restart: "no"
+    command: ["stdio"]
+    stdin_open: true
+    tty: true
+
+  # Test runner for integration tests
+  mcp-vikunja-test:
+    build:
+      context: .
+      dockerfile: cmd/mcp-vikunja/Dockerfile
+    container_name: mcp-vikunja-test
+    environment:
+      - VIKUNJA_HOST=http://vikunja:3456
+      - VIKUNJA_TOKEN=dev-token-for-local-testing
+      - VIKUNJA_INSECURE=true
+      - MCP_TRANSPORT=http
+      - MCP_HTTP_HOST=0.0.0.0
+      - MCP_HTTP_PORT=8081
+      - MCP_HTTP_SESSION_TIMEOUT=30m
+      - MCP_HTTP_STATELESS=true
+    volumes:
+      - .:/app
+      - go_modules:/go/pkg/mod
+    networks:
+      - mcp-vikunja-network
+    depends_on:
+      vikunja:
+        condition: service_started
+    restart: "no"
+    command: ["test"]
+
+volumes:
+  vikunja_db_data:
+    driver: local
+  go_modules:
+    driver: local
+
+networks:
+  mcp-vikunja-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16

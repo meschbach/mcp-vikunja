@@ -14,37 +14,37 @@ import (
 )
 
 func TestStatusConstants(t *testing.T) {
-	assert.Equal(t, Status("healthy"), StatusHealthy)
-	assert.Equal(t, Status("unhealthy"), StatusUnhealthy)
-	assert.Equal(t, Status("unknown"), StatusUnknown)
+	assert.Equal(t, StatusHealthy, Status("healthy"))
+	assert.Equal(t, StatusUnhealthy, Status("unhealthy"))
+	assert.Equal(t, StatusUnknown, Status("unknown"))
 }
 
 func TestCheckTypeConstants(t *testing.T) {
-	assert.Equal(t, CheckType("liveness"), CheckTypeLiveness)
-	assert.Equal(t, CheckType("readiness"), CheckTypeReadiness)
+	assert.Equal(t, CheckTypeLiveness, CheckType("liveness"))
+	assert.Equal(t, CheckTypeReadiness, CheckType("readiness"))
 }
 
-func TestNewHealthChecker(t *testing.T) {
-	hc := NewHealthChecker()
+func TestNew(t *testing.T) {
+	hc := New()
 	assert.NotNil(t, hc)
 	assert.NotNil(t, hc.checks)
 	assert.Empty(t, hc.checks)
 }
 
-func TestHealthChecker_Register(t *testing.T) {
-	hc := NewHealthChecker()
+func TestManager_Register(t *testing.T) {
+	hc := New()
 	check := &ServerCheck{}
 
 	hc.Register(check)
 	assert.Len(t, hc.checks, 1)
 }
 
-func TestHealthChecker_CheckAll(t *testing.T) {
+func TestManager_CheckAll(t *testing.T) {
 	t.Run("with server check", func(t *testing.T) {
-		hc := NewHealthChecker()
+		hc := New()
 		hc.Register(&ServerCheck{})
 
-		response := hc.CheckAll(context.Background())
+		response := hc.CheckAll(t.Context())
 
 		assert.Equal(t, string(StatusHealthy), response.Status)
 		assert.NotNil(t, response.Timestamp)
@@ -53,18 +53,18 @@ func TestHealthChecker_CheckAll(t *testing.T) {
 	})
 
 	t.Run("empty checks", func(t *testing.T) {
-		hc := NewHealthChecker()
+		hc := New()
 
-		response := hc.CheckAll(context.Background())
+		response := hc.CheckAll(t.Context())
 
 		assert.Equal(t, string(StatusHealthy), response.Status)
 		assert.Empty(t, response.Checks)
 	})
 }
 
-func TestHealthChecker_CheckLiveness(t *testing.T) {
-	hc := NewHealthChecker()
-	response := hc.CheckLiveness(context.Background())
+func TestManager_CheckLiveness(t *testing.T) {
+	hc := New()
+	response := hc.CheckLiveness(t.Context())
 
 	assert.Equal(t, string(StatusHealthy), response.Status)
 	assert.NotNil(t, response.Timestamp)
@@ -73,23 +73,23 @@ func TestHealthChecker_CheckLiveness(t *testing.T) {
 	assert.Equal(t, StatusHealthy, response.Checks["server"].Status)
 }
 
-func TestHealthChecker_CheckReadiness(t *testing.T) {
-	hc := NewHealthChecker()
+func TestManager_CheckReadiness(t *testing.T) {
+	hc := New()
 	hc.Register(&ServerCheck{})
 
-	response := hc.CheckReadiness(context.Background())
+	response := hc.CheckReadiness(t.Context())
 
 	assert.Equal(t, string(StatusHealthy), response.Status)
 	assert.Len(t, response.Checks, 1)
 }
 
-func TestHealthChecker_HTTPHandler(t *testing.T) {
-	hc := NewHealthChecker()
+func TestManager_HTTPHandler(t *testing.T) {
+	hc := New()
 	hc.Register(&ServerCheck{})
 
 	t.Run("health endpoint", func(t *testing.T) {
 		handler := hc.HTTPHandler("")
-		req := httptest.NewRequest("GET", "/health", nil)
+		req := httptest.NewRequest("GET", "/health", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		handler(rec, req)
@@ -104,7 +104,7 @@ func TestHealthChecker_HTTPHandler(t *testing.T) {
 
 	t.Run("liveness endpoint", func(t *testing.T) {
 		handler := hc.HTTPHandler(CheckTypeLiveness)
-		req := httptest.NewRequest("GET", "/health/live", nil)
+		req := httptest.NewRequest("GET", "/health/live", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		handler(rec, req)
@@ -119,7 +119,7 @@ func TestHealthChecker_HTTPHandler(t *testing.T) {
 
 	t.Run("readiness endpoint", func(t *testing.T) {
 		handler := hc.HTTPHandler(CheckTypeReadiness)
-		req := httptest.NewRequest("GET", "/health/ready", nil)
+		req := httptest.NewRequest("GET", "/health/ready", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		handler(rec, req)
@@ -139,11 +139,11 @@ func TestHealthChecker_HTTPHandler(t *testing.T) {
 			status: StatusUnhealthy,
 		}
 
-		hc := NewHealthChecker()
+		hc := New()
 		hc.Register(unhealthyChecker)
 
 		handler := hc.HTTPHandler("")
-		req := httptest.NewRequest("GET", "/health", nil)
+		req := httptest.NewRequest("GET", "/health", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		handler(rec, req)
@@ -165,7 +165,7 @@ func TestServerCheck(t *testing.T) {
 	})
 
 	t.Run("check", func(t *testing.T) {
-		result := check.Check(context.Background())
+		result := check.Check(t.Context())
 
 		assert.Equal(t, "server", result.Name)
 		assert.Equal(t, StatusHealthy, result.Status)
@@ -181,7 +181,7 @@ func TestVikunjaCheck(t *testing.T) {
 		}
 
 		check := NewVikunjaCheck(mockClient)
-		result := check.Check(context.Background())
+		result := check.Check(t.Context())
 
 		assert.Equal(t, "vikunja", result.Name)
 		assert.Equal(t, StatusHealthy, result.Status)
@@ -196,7 +196,7 @@ func TestVikunjaCheck(t *testing.T) {
 		}
 
 		check := NewVikunjaCheck(mockClient)
-		result := check.Check(context.Background())
+		result := check.Check(t.Context())
 
 		assert.Equal(t, "vikunja", result.Name)
 		assert.Equal(t, StatusUnhealthy, result.Status)
@@ -262,7 +262,7 @@ func (m *mockChecker) Name() string {
 	return m.name
 }
 
-func (m *mockChecker) Check(ctx context.Context) CheckResult {
+func (m *mockChecker) Check(_ context.Context) CheckResult {
 	return CheckResult{
 		Name:   m.name,
 		Status: m.status,
@@ -274,6 +274,6 @@ type mockVikunjaClient struct {
 	err      error
 }
 
-func (m *mockVikunjaClient) GetProjects(ctx context.Context) ([]interface{}, error) {
+func (m *mockVikunjaClient) GetProjects(_ context.Context) ([]interface{}, error) {
 	return m.projects, m.err
 }

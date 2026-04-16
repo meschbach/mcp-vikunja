@@ -33,7 +33,7 @@ var rootCmd = &cobra.Command{
 	Use:   "vikunja-cli",
 	Short: "CLI tool for Vikunja task management",
 	Long:  `A command-line interface for interacting with Vikunja task management API.`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 		// Setup logging
 		logLevel := slog.LevelWarn
 		if verbose {
@@ -82,26 +82,32 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// Execute runs the root command of the CLI.
 func Execute() error {
 	return rootCmd.Execute()
 }
 
+// GetClient returns the configured Vikunja client.
 func GetClient() *vikunja.Client {
 	return client
 }
 
+// GetOutputWriter returns the output writer (stdout or file).
 func GetOutputWriter() io.Writer {
 	return outputWriter
 }
 
+// IsJSON returns true if JSON output format is requested.
 func IsJSON() bool {
 	return jsonFmt
 }
 
+// IsMarkdown returns true if Markdown output format is requested.
 func IsMarkdown() bool {
 	return markdown
 }
 
+// GetLogger returns the configured logger.
 func GetLogger() *slog.Logger {
 	return logger
 }

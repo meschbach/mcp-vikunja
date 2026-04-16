@@ -8,7 +8,9 @@ import (
 )
 
 // FormatProjects formats a list of projects as a table
-func (f *Formatter) FormatProjects(projects []Project) error {
+//
+//nolint:errcheck
+func (f *Formatter) FormatProjects(projects []*Project) error {
 	if f.useColor {
 		headerColor := color.New(color.FgCyan, color.Bold)
 		_, _ = fmt.Fprintln(f.output, headerColor.Sprint("PROJECTS"))
@@ -33,6 +35,8 @@ func (f *Formatter) FormatProjects(projects []Project) error {
 }
 
 // FormatProject formats a single project with full details
+//
+//nolint:errcheck
 func (f *Formatter) FormatProject(project *Project) error {
 	if f.useColor {
 		titleColor := color.New(color.FgCyan, color.Bold)
@@ -55,7 +59,9 @@ func (f *Formatter) FormatProject(project *Project) error {
 }
 
 // FormatTasks formats a list of tasks as a table
-func (f *Formatter) FormatTasks(tasks []Task) error {
+//
+//nolint:errcheck
+func (f *Formatter) FormatTasks(tasks []*Task) error {
 	if f.useColor {
 		headerColor := color.New(color.FgCyan, color.Bold)
 		_, _ = fmt.Fprintln(f.output, headerColor.Sprint("TASKS"))
@@ -84,6 +90,9 @@ func (f *Formatter) FormatTasks(tasks []Task) error {
 }
 
 // FormatTask formats a single task with full details
+//
+//nolint:errcheck
+//revive:disable-next-line:dupl
 func (f *Formatter) FormatTask(task *Task) error {
 	if f.useColor {
 		titleColor := color.New(color.FgCyan, color.Bold)
@@ -112,7 +121,9 @@ func (f *Formatter) FormatTask(task *Task) error {
 }
 
 // FormatBuckets formats a list of buckets
-func (f *Formatter) FormatBuckets(buckets []Bucket) error {
+//
+//nolint:errcheck
+func (f *Formatter) FormatBuckets(buckets []*Bucket) error {
 	w := tabwriter.NewWriter(f.output, 0, 0, 2, ' ', 0)
 
 	headerColor := color.New(color.FgCyan, color.Bold)
@@ -120,21 +131,19 @@ func (f *Formatter) FormatBuckets(buckets []Bucket) error {
 		headerColor = color.New()
 	}
 
-	_, _ = fmt.Fprintln(w, headerColor.Sprint("TITLE")+"\t"+headerColor.Sprint("ID")+"\t"+headerColor.Sprint("DONE")+"\t"+headerColor.Sprint("POSITION"))
+	_, _ = fmt.Fprintln(w, headerColor.Sprint("TITLE")+"\t"+headerColor.Sprint("ID")+"\t"+headerColor.Sprint("POSITION"))
 
 	for _, b := range buckets {
-		done := "No"
-		if b.IsDoneBucket {
-			done = "Yes"
-		}
-		_, _ = fmt.Fprintf(w, "%s\t%d\t%s\t%.2f\n", b.Title, b.ID, done, b.Position)
+		_, _ = fmt.Fprintf(w, "%s\t%d\t%.2f\n", b.Title, b.ID, b.Position)
 	}
 
 	return w.Flush()
 }
 
 // FormatProjectViews formats a list of project views
-func (f *Formatter) FormatProjectViews(views []ProjectView) error {
+//
+//nolint:errcheck
+func (f *Formatter) FormatProjectViews(views []*ProjectView) error {
 	w := tabwriter.NewWriter(f.output, 0, 0, 2, ' ', 0)
 
 	headerColor := color.New(color.FgCyan, color.Bold)
@@ -151,63 +160,63 @@ func (f *Formatter) FormatProjectViews(views []ProjectView) error {
 	return w.Flush()
 }
 
+//
+//nolint:errcheck
+func (f *Formatter) formatTaskBucketViews(label string, views []TaskViewInfo) {
+	if len(views) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(f.output, "\n%s\n", label)
+	for _, view := range views {
+		if view.ViewKind == ViewKindKanban && view.BucketTitle != nil {
+			doneMark := ""
+			if view.IsDoneBucket {
+				doneMark = " [DONE]"
+			}
+			_, _ = fmt.Fprintf(f.output, "  %s (%s): %s%s\n",
+				view.ViewTitle, view.ViewKind, *view.BucketTitle, doneMark)
+		}
+	}
+}
+
 // FormatTaskWithBuckets formats a single task with bucket information
+//
+//nolint:errcheck
+//revive:disable-next-line:dupl
 func (f *Formatter) FormatTaskWithBuckets(task *Task, bucketInfo *TaskBucketInfo) error {
+	uri := fmt.Sprintf("vikunja://tasks/%d", task.ID)
 	if f.useColor {
-		titleColor := color.New(color.FgCyan, color.Bold)
 		labelColor := color.New(color.FgYellow)
-		_, _ = fmt.Fprintf(f.output, "%s\n\n", titleColor.Sprint(task.Title))
+		_, _ = fmt.Fprintf(f.output, "%s\n\n", color.New(color.FgCyan, color.Bold).Sprint(task.Title))
 		_, _ = fmt.Fprintf(f.output, "%s %d\n", labelColor.Sprint("ID:"), task.ID)
-		_, _ = fmt.Fprintf(f.output, "%s %s\n", labelColor.Sprint("URI:"), fmt.Sprintf("vikunja://tasks/%d", task.ID))
+		_, _ = fmt.Fprintf(f.output, "%s %s\n", labelColor.Sprint("URI:"), uri)
 		if task.ProjectID > 0 {
 			_, _ = fmt.Fprintf(f.output, "%s %d\n", labelColor.Sprint("Project ID:"), task.ProjectID)
 		}
 		if task.Description != "" {
 			_, _ = fmt.Fprintf(f.output, "\n%s\n%s\n", labelColor.Sprint("Description:"), task.Description)
 		}
-
-		if bucketInfo != nil && len(bucketInfo.Views) > 0 {
-			_, _ = fmt.Fprintf(f.output, "\n%s\n", labelColor.Sprint("Bucket Information:"))
-			for _, view := range bucketInfo.Views {
-				if view.ViewKind == ViewKindKanban && view.BucketTitle != nil {
-					doneMark := ""
-					if view.IsDoneBucket {
-						doneMark = " [DONE]"
-					}
-					_, _ = fmt.Fprintf(f.output, "  %s (%s): %s%s\n",
-						view.ViewTitle, view.ViewKind, *view.BucketTitle, doneMark)
-				}
-			}
-		}
 	} else {
 		_, _ = fmt.Fprintf(f.output, "%s\n\n", task.Title)
 		_, _ = fmt.Fprintf(f.output, "ID: %d\n", task.ID)
-		_, _ = fmt.Fprintf(f.output, "URI: %s\n", fmt.Sprintf("vikunja://tasks/%d", task.ID))
+		_, _ = fmt.Fprintf(f.output, "URI: %s\n", uri)
 		if task.ProjectID > 0 {
 			_, _ = fmt.Fprintf(f.output, "Project ID: %d\n", task.ProjectID)
 		}
 		if task.Description != "" {
 			_, _ = fmt.Fprintf(f.output, "\nDescription:\n%s\n", task.Description)
 		}
+	}
 
-		if bucketInfo != nil && len(bucketInfo.Views) > 0 {
-			_, _ = fmt.Fprintf(f.output, "\nBucket Information:\n")
-			for _, view := range bucketInfo.Views {
-				if view.ViewKind == ViewKindKanban && view.BucketTitle != nil {
-					doneMark := ""
-					if view.IsDoneBucket {
-						doneMark = " [DONE]"
-					}
-					_, _ = fmt.Fprintf(f.output, "  %s (%s): %s%s\n",
-						view.ViewTitle, view.ViewKind, *view.BucketTitle, doneMark)
-				}
-			}
-		}
+	if bucketInfo != nil {
+		f.formatTaskBucketViews(color.New(color.FgYellow).Sprint("Bucket Information:"), bucketInfo.Views)
 	}
 	return nil
 }
 
 // FormatViewTasks formats a view with its buckets and tasks
+//
+//nolint:errcheck
 func (f *Formatter) FormatViewTasks(vt *ViewTasks) error {
 	titleColor := color.New(color.FgCyan, color.Bold)
 	bucketColor := color.New(color.FgYellow, color.Bold)
@@ -223,17 +232,15 @@ func (f *Formatter) FormatViewTasks(vt *ViewTasks) error {
 
 	_, _ = fmt.Fprintf(f.output, "%s (ID: %d)\n\n", titleColor.Sprint(vt.ViewTitle), vt.ViewID)
 
-	for _, bt := range vt.Buckets {
-		doneMark := ""
-		if bt.Bucket.IsDoneBucket {
-			doneMark = " [DONE]"
-		}
-		_, _ = fmt.Fprintf(f.output, "%s (ID: %d)%s\n", bucketColor.Sprint(bt.Bucket.Title), bt.Bucket.ID, doneMark)
+	for i := range vt.Buckets {
+		bt := &vt.Buckets[i]
+		_, _ = fmt.Fprintf(f.output, "%s (ID: %d)\n", bucketColor.Sprint(bt.Bucket.Title), bt.Bucket.ID)
 
 		if len(bt.Tasks) == 0 {
 			_, _ = fmt.Fprintf(f.output, "  (no tasks)\n")
 		} else {
-			for _, t := range bt.Tasks {
+			for i := range bt.Tasks {
+				t := bt.Tasks[i]
 				tc := taskColor
 				if t.Done {
 					tc = doneColor

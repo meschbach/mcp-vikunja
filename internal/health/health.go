@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -13,16 +14,21 @@ import (
 type Status string
 
 const (
-	StatusHealthy   Status = "healthy"
+	// StatusHealthy indicates the component is healthy
+	StatusHealthy Status = "healthy"
+	// StatusUnhealthy indicates the component is unhealthy
 	StatusUnhealthy Status = "unhealthy"
-	StatusUnknown   Status = "unknown"
+	// StatusUnknown indicates the component status is unknown
+	StatusUnknown Status = "unknown"
 )
 
 // CheckType represents the type of health check
 type CheckType string
 
 const (
-	CheckTypeLiveness  CheckType = "liveness"
+	// CheckTypeLiveness represents a liveness check
+	CheckTypeLiveness CheckType = "liveness"
+	// CheckTypeReadiness represents a readiness check
 	CheckTypeReadiness CheckType = "readiness"
 )
 
@@ -48,25 +54,25 @@ type Checker interface {
 	Check(ctx context.Context) CheckResult
 }
 
-// HealthChecker manages multiple health checks
-type HealthChecker struct {
+// Manager manages multiple health checks
+type Manager struct {
 	checks []Checker
 }
 
-// NewHealthChecker creates a new health checker
-func NewHealthChecker() *HealthChecker {
-	return &HealthChecker{
+// New creates a new health check manager
+func New() *Manager {
+	return &Manager{
 		checks: make([]Checker, 0),
 	}
 }
 
-// Register adds a health check to the checker
-func (hc *HealthChecker) Register(checker Checker) {
+// Register adds a health check to the manager
+func (hc *Manager) Register(checker Checker) {
 	hc.checks = append(hc.checks, checker)
 }
 
 // CheckAll runs all registered health checks
-func (hc *HealthChecker) CheckAll(ctx context.Context) Response {
+func (hc *Manager) CheckAll(ctx context.Context) Response {
 	response := Response{
 		Status:    string(StatusHealthy),
 		Timestamp: time.Now(),
@@ -87,7 +93,7 @@ func (hc *HealthChecker) CheckAll(ctx context.Context) Response {
 }
 
 // CheckLiveness returns liveness status
-func (hc *HealthChecker) CheckLiveness(ctx context.Context) Response {
+func (hc *Manager) CheckLiveness(_ context.Context) Response {
 	return Response{
 		Status:    string(StatusHealthy),
 		Timestamp: time.Now(),
@@ -102,12 +108,12 @@ func (hc *HealthChecker) CheckLiveness(ctx context.Context) Response {
 }
 
 // CheckReadiness returns readiness status
-func (hc *HealthChecker) CheckReadiness(ctx context.Context) Response {
+func (hc *Manager) CheckReadiness(ctx context.Context) Response {
 	return hc.CheckAll(ctx)
 }
 
 // HTTPHandler returns an HTTP handler for health checks
-func (hc *HealthChecker) HTTPHandler(checkType CheckType) http.HandlerFunc {
+func (hc *Manager) HTTPHandler(checkType CheckType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var response Response
@@ -129,7 +135,9 @@ func (hc *HealthChecker) HTTPHandler(checkType CheckType) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			slog.Error("failed to encode health response", "error", err)
+		}
 	}
 }
 
@@ -142,7 +150,7 @@ func (sc *ServerCheck) Name() string {
 }
 
 // Check performs the health check
-func (sc *ServerCheck) Check(ctx context.Context) CheckResult {
+func (sc *ServerCheck) Check(_ context.Context) CheckResult {
 	return CheckResult{
 		Name:    "server",
 		Status:  StatusHealthy,

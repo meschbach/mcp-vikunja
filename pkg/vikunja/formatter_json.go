@@ -12,7 +12,7 @@ func (f *Formatter) FormatAsJSON(v interface{}) error {
 }
 
 // FormatProjectsAsJSON formats projects as JSON
-func (f *Formatter) FormatProjectsAsJSON(projects []Project) error {
+func (f *Formatter) FormatProjectsAsJSON(projects []*Project) error {
 	return f.FormatAsJSON(projects)
 }
 
@@ -22,7 +22,7 @@ func (f *Formatter) FormatProjectAsJSON(project *Project) error {
 }
 
 // FormatTasksAsJSON formats tasks as JSON
-func (f *Formatter) FormatTasksAsJSON(tasks []Task) error {
+func (f *Formatter) FormatTasksAsJSON(tasks []*Task) error {
 	return f.FormatAsJSON(tasks)
 }
 

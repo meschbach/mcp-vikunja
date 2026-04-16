@@ -17,7 +17,7 @@ type Server interface {
 	Run(ctx context.Context) error
 }
 
-// TransportFactory creates a transport server based on configuration.
+// CreateTransportServer creates a transport server based on configuration.
 func CreateTransportServer(mcpServer *mcp.Server, cfg *config.Config) (Server, error) {
 	switch cfg.Transport {
 	case config.TransportStdio:
@@ -50,7 +50,7 @@ func (s *StdioServer) Run(ctx context.Context) error {
 type HTTPServer struct {
 	server        *mcp.Server
 	config        *config.Config
-	healthChecker *health.HealthChecker
+	healthChecker *health.Manager
 }
 
 // Run starts the MCP server with HTTP transport.
@@ -80,19 +80,7 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 		mux.HandleFunc("/health/ready", s.healthChecker.HTTPHandler(health.CheckTypeReadiness))
 	}
 
-	// Create HTTP server with proper timeouts, defaulting to port 8080
-	addr := s.config.HTTP.Address()
-	if addr == "" || addr == ":0" {
-		addr = ":8080"
-	}
-
-	httpServer := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  s.config.HTTP.ReadTimeout,
-		WriteTimeout: s.config.HTTP.WriteTimeout,
-		IdleTimeout:  s.config.HTTP.IdleTimeout,
-	}
+	httpServer := s.createHTTPServer(mux)
 
 	// Start the HTTP server in a goroutine
 	errChan := make(chan error, 1)
@@ -111,7 +99,7 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		// Graceful shutdown - this is an expected condition, not an error
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -130,6 +118,21 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 }
 
 // SetHealthChecker sets the health checker for the HTTP server
-func (s *HTTPServer) SetHealthChecker(hc *health.HealthChecker) {
+func (s *HTTPServer) SetHealthChecker(hc *health.Manager) {
 	s.healthChecker = hc
+}
+
+func (s *HTTPServer) createHTTPServer(mux *http.ServeMux) *http.Server {
+	addr := s.config.HTTP.Address()
+	if addr == "" || addr == ":0" {
+		addr = ":8080"
+	}
+
+	return &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  s.config.HTTP.ReadTimeout,
+		WriteTimeout: s.config.HTTP.WriteTimeout,
+		IdleTimeout:  s.config.HTTP.IdleTimeout,
+	}
 }

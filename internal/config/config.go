@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -16,8 +17,10 @@ import (
 type TransportType string
 
 const (
+	// TransportStdio defines the stdio transport type.
 	TransportStdio TransportType = "stdio"
-	TransportHTTP  TransportType = "http"
+	// TransportHTTP defines the HTTP transport type.
+	TransportHTTP TransportType = "http"
 )
 
 // Config represents the complete configuration for the MCP Vikunja server.
@@ -100,10 +103,29 @@ func Load(cliFormat *string, cliReadonly *bool) (*Config, error) {
 
 // loadHTTPConfig loads HTTP-specific configuration from environment variables.
 func loadHTTPConfig(cfg *HTTPConfig) error {
+	var errs []error
+
+	loadHTTPHost(cfg)
+	if err := loadHTTPPort(cfg); err != nil {
+		errs = append(errs, err)
+	}
+	if err := loadHTTPTimeouts(cfg); err != nil {
+		errs = append(errs, err)
+	}
+	if err := loadHTTPStateless(cfg); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+func loadHTTPHost(cfg *HTTPConfig) {
 	if host := os.Getenv("MCP_HTTP_HOST"); host != "" {
 		cfg.Host = host
 	}
+}
 
+func loadHTTPPort(cfg *HTTPConfig) error {
 	if port := os.Getenv("MCP_HTTP_PORT"); port != "" {
 		p, err := strconv.Atoi(port)
 		if err != nil {
@@ -111,7 +133,29 @@ func loadHTTPConfig(cfg *HTTPConfig) error {
 		}
 		cfg.Port = p
 	}
+	return nil
+}
 
+func loadHTTPTimeouts(cfg *HTTPConfig) error {
+	var errs []error
+
+	if err := loadSessionTimeout(cfg); err != nil {
+		errs = append(errs, err)
+	}
+	if err := loadReadTimeout(cfg); err != nil {
+		errs = append(errs, err)
+	}
+	if err := loadWriteTimeout(cfg); err != nil {
+		errs = append(errs, err)
+	}
+	if err := loadIdleTimeout(cfg); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+func loadSessionTimeout(cfg *HTTPConfig) error {
 	if timeout := os.Getenv("MCP_HTTP_SESSION_TIMEOUT"); timeout != "" {
 		d, err := time.ParseDuration(timeout)
 		if err != nil {
@@ -119,15 +163,10 @@ func loadHTTPConfig(cfg *HTTPConfig) error {
 		}
 		cfg.SessionTimeout = d
 	}
+	return nil
+}
 
-	if stateless := os.Getenv("MCP_HTTP_STATELESS"); stateless != "" {
-		s, err := strconv.ParseBool(stateless)
-		if err != nil {
-			return fmt.Errorf("invalid stateless flag: %s", stateless)
-		}
-		cfg.Stateless = s
-	}
-
+func loadReadTimeout(cfg *HTTPConfig) error {
 	if timeout := os.Getenv("MCP_HTTP_READ_TIMEOUT"); timeout != "" {
 		d, err := time.ParseDuration(timeout)
 		if err != nil {
@@ -135,7 +174,10 @@ func loadHTTPConfig(cfg *HTTPConfig) error {
 		}
 		cfg.ReadTimeout = d
 	}
+	return nil
+}
 
+func loadWriteTimeout(cfg *HTTPConfig) error {
 	if timeout := os.Getenv("MCP_HTTP_WRITE_TIMEOUT"); timeout != "" {
 		d, err := time.ParseDuration(timeout)
 		if err != nil {
@@ -143,7 +185,10 @@ func loadHTTPConfig(cfg *HTTPConfig) error {
 		}
 		cfg.WriteTimeout = d
 	}
+	return nil
+}
 
+func loadIdleTimeout(cfg *HTTPConfig) error {
 	if timeout := os.Getenv("MCP_HTTP_IDLE_TIMEOUT"); timeout != "" {
 		d, err := time.ParseDuration(timeout)
 		if err != nil {
@@ -151,7 +196,17 @@ func loadHTTPConfig(cfg *HTTPConfig) error {
 		}
 		cfg.IdleTimeout = d
 	}
+	return nil
+}
 
+func loadHTTPStateless(cfg *HTTPConfig) error {
+	if stateless := os.Getenv("MCP_HTTP_STATELESS"); stateless != "" {
+		s, err := strconv.ParseBool(stateless)
+		if err != nil {
+			return fmt.Errorf("invalid stateless flag: %s", stateless)
+		}
+		cfg.Stateless = s
+	}
 	return nil
 }
 
@@ -191,7 +246,7 @@ func parseOutputFormat(format string) (vikunja.OutputFormat, error) {
 }
 
 // loadReadonlyConfig loads readonly configuration from environment variable with CLI precedence
-func loadReadonlyConfig(cfg *bool, cliReadonly *bool) error {
+func loadReadonlyConfig(cfg, cliReadonly *bool) error {
 	// Default to false (write operations enabled)
 	*cfg = false
 
@@ -241,41 +296,60 @@ func loadOutputFormatConfig(cfg *vikunja.OutputFormat, cliFormat *string) error 
 
 // Validate validates the configuration.
 func (c *Config) Validate() error {
-	switch c.Transport {
-	case TransportStdio, TransportHTTP:
-		// Valid transport types
-	default:
-		return fmt.Errorf("invalid transport type: %s", c.Transport)
+	var errs []error
+
+	if err := c.validateTransport(); err != nil {
+		errs = append(errs, err)
 	}
 
 	if c.Transport == TransportHTTP {
-		if c.HTTP.Port <= 0 || c.HTTP.Port > 65535 {
-			return fmt.Errorf("invalid HTTP port: %d (must be 1-65535)", c.HTTP.Port)
-		}
-
-		if c.HTTP.Host == "" {
-			return fmt.Errorf("HTTP host cannot be empty")
-		}
-
-		// Validate that host:port is not already in use
-		address := net.JoinHostPort(c.HTTP.Host, strconv.Itoa(c.HTTP.Port))
-		conn, err := net.DialTimeout("tcp", address, 1*time.Second)
-		if err == nil {
-			_ = conn.Close()
-			return fmt.Errorf("HTTP address %s is already in use", address)
+		if err := c.HTTP.Validate(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	// Validate Vikunja configuration
-	if c.Vikunja.Host == "" {
-		return fmt.Errorf("VIKUNJA_HOST is required")
+	if err := c.Vikunja.Validate(); err != nil {
+		errs = append(errs, err)
 	}
 
-	if c.Vikunja.Token == "" {
-		return fmt.Errorf("VIKUNJA_TOKEN is required")
+	return errors.Join(errs...)
+}
+
+func (c *Config) validateTransport() error {
+	switch c.Transport {
+	case TransportStdio, TransportHTTP:
+		return nil
+	default:
+		return fmt.Errorf("invalid transport type: %s", c.Transport)
+	}
+}
+
+// Validate checks HTTP configuration validity.
+func (c *HTTPConfig) Validate() error {
+	var errs []error
+
+	if c.Port <= 0 || c.Port > 65535 {
+		errs = append(errs, fmt.Errorf("invalid HTTP port: %d (must be 1-65535)", c.Port))
+	}
+	if c.Host == "" {
+		errs = append(errs, fmt.Errorf("HTTP host cannot be empty"))
 	}
 
-	return nil
+	return errors.Join(errs...)
+}
+
+// Validate checks Vikunja configuration validity.
+func (c *VikunjaConfig) Validate() error {
+	var errs []error
+
+	if c.Host == "" {
+		errs = append(errs, fmt.Errorf("VIKUNJA_HOST is required"))
+	}
+	if c.Token == "" {
+		errs = append(errs, fmt.Errorf("VIKUNJA_TOKEN is required"))
+	}
+
+	return errors.Join(errs...)
 }
 
 // Address returns the full HTTP address in host:port format.

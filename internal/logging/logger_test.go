@@ -54,18 +54,17 @@ func TestLoadConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set env vars
 			if tt.envLevel != "" {
-				os.Setenv("LOG_LEVEL", tt.envLevel)
-				defer os.Unsetenv("LOG_LEVEL")
+				require.NoError(t, os.Setenv("LOG_LEVEL", tt.envLevel))
+				t.Cleanup(func() { require.NoError(t, os.Unsetenv("LOG_LEVEL")) })
 			}
 			if tt.envFormat != "" {
-				os.Setenv("LOG_FORMAT", tt.envFormat)
-				defer os.Unsetenv("LOG_FORMAT")
+				require.NoError(t, os.Setenv("LOG_FORMAT", tt.envFormat))
+				t.Cleanup(func() { require.NoError(t, os.Unsetenv("LOG_FORMAT")) })
 			}
 			if tt.envOutput != "" {
-				os.Setenv("LOG_OUTPUT", tt.envOutput)
-				defer os.Unsetenv("LOG_OUTPUT")
+				require.NoError(t, os.Setenv("LOG_OUTPUT", tt.envOutput))
+				t.Cleanup(func() { require.NoError(t, os.Unsetenv("LOG_OUTPUT")) })
 			}
 
 			cfg := LoadConfig()
@@ -106,11 +105,11 @@ func TestNewLogger(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger, err := NewLogger(tt.config)
 			if tt.shouldError {
-				assert.Error(t, err)
-				assert.Nil(t, logger)
+				require.Error(t, err)
+				require.Nil(t, logger)
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, logger)
+				require.NoError(t, err)
+				require.NotNil(t, logger)
 			}
 		})
 	}
@@ -125,8 +124,8 @@ func TestNewLogger_InvalidFile(t *testing.T) {
 	}
 
 	logger, err := NewLogger(config)
-	assert.Error(t, err)
-	assert.Nil(t, logger)
+	require.Error(t, err)
+	require.Nil(t, logger)
 }
 
 func TestMustNewLogger(t *testing.T) {
@@ -207,15 +206,15 @@ func TestWithRequestID(t *testing.T) {
 }
 
 func TestLevelConstants(t *testing.T) {
-	assert.Equal(t, Level("debug"), LevelDebug)
-	assert.Equal(t, Level("info"), LevelInfo)
-	assert.Equal(t, Level("warn"), LevelWarn)
-	assert.Equal(t, Level("error"), LevelError)
+	assert.Equal(t, LevelDebug, Level("debug"))
+	assert.Equal(t, LevelInfo, Level("info"))
+	assert.Equal(t, LevelWarn, Level("warn"))
+	assert.Equal(t, LevelError, Level("error"))
 }
 
 func TestFormatConstants(t *testing.T) {
-	assert.Equal(t, Format("json"), FormatJSON)
-	assert.Equal(t, Format("text"), FormatText)
+	assert.Equal(t, FormatJSON, Format("json"))
+	assert.Equal(t, FormatText, Format("text"))
 }
 
 func TestNewLogger_UnsupportedLevel(t *testing.T) {
@@ -227,7 +226,7 @@ func TestNewLogger_UnsupportedLevel(t *testing.T) {
 
 	// Should default to Info level
 	logger, err := NewLogger(config)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, logger)
 }
 

@@ -1,9 +1,9 @@
-// Package cmd provides cobra commands for the MCP Vikunja server.
 package cmd
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -59,79 +59,43 @@ func init() {
 	serverCmd.Flags().StringVar(&idleTimeout, "idle-timeout", "2m", "HTTP idle timeout (env: MCP_HTTP_IDLE_TIMEOUT)")
 }
 
-func runServer(cmd *cobra.Command, args []string) error {
-	// Setup logging
-	logConfig := logging.LoadConfig()
-	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
-		logConfig.Level = logging.LevelDebug
-	}
-	logger, err := logging.NewLogger(logConfig)
+func runServer(cmd *cobra.Command, _ []string) error {
+	logger, cfg, err := initServer(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to initialize logger: %w", err)
-	}
-	logger = logging.WithComponent(logger, "server")
-
-	// Get output format from CLI flag
-	var cliFormat *string
-	if format := cmd.Flag("output-format").Value.String(); format != "" {
-		cliFormat = &format
+		return err
 	}
 
-	// Get readonly flag value
-	cliReadonly := &readonly
-
-	// Create configuration
-	cfg, err := config.Load(cliFormat, cliReadonly)
-	if err != nil {
-		return fmt.Errorf("failed to create server configuration: %w", err)
-	}
-
-	// Force HTTP transport for server command
-	cfg.Transport = config.TransportHTTP
-
-	// Override server-specific settings from flags
-	if httpHost != "" {
-		cfg.HTTP.Host = httpHost
-	}
-	if httpPort > 0 {
-		cfg.HTTP.Port = httpPort
-	}
-	if sessionTimeout != "" {
-		cfg.HTTP.SessionTimeout, err = time.ParseDuration(sessionTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid session timeout: %w", err)
-		}
-	}
-	if stateless {
-		cfg.HTTP.Stateless = stateless
-	}
-	if readTimeout != "" {
-		cfg.HTTP.ReadTimeout, err = time.ParseDuration(readTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid read timeout: %w", err)
-		}
-	}
-	if writeTimeout != "" {
-		cfg.HTTP.WriteTimeout, err = time.ParseDuration(writeTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid write timeout: %w", err)
-		}
-	}
-	if idleTimeout != "" {
-		cfg.HTTP.IdleTimeout, err = time.ParseDuration(idleTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid idle timeout: %w", err)
-		}
-	}
-
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("configuration validation failed: %w", err)
-	}
-
-	// Setup context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := setupShutdownHandler(logger)
 	defer cancel()
+
+	return runServerTransport(ctx, cfg, logger)
+}
+
+func initServer(cmd *cobra.Command) (*slog.Logger, *config.Config, error) {
+	logger, err := initServerLogging(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cfg, err := initServerConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := applyServerFlags(cfg); err != nil {
+		return nil, nil, err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+
+	return logger, cfg, nil
+}
+
+func setupShutdownHandler(logger *slog.Logger) (context.Context, context.CancelFunc) {
+	//nolint
+	ctx, cancel := context.WithCancel(context.Background())
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -141,6 +105,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 		logger.Info("received shutdown signal")
 		cancel()
 	}()
+
+	return ctx, cancel
+}
+
+func runServerTransport(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 
 	// Log configuration
 	logger.Info("starting MCP server with HTTP transport",
@@ -180,7 +149,7 @@ view, and buckets as you need.
 
 	// Setup health checks for HTTP transport
 	if cfg.Transport == config.TransportHTTP {
-		hc := health.NewHealthChecker()
+		hc := health.New()
 		hc.Register(&health.ServerCheck{})
 
 		// Try to set health checker on HTTP server
@@ -202,5 +171,77 @@ view, and buckets as you need.
 		}
 	}
 	logger.Info("server shutdown completed")
+	return nil
+}
+
+func initServerLogging(cmd *cobra.Command) (*slog.Logger, error) {
+	logConfig := logging.LoadConfig()
+	if verbose, err := cmd.Flags().GetBool("verbose"); err == nil && verbose {
+		logConfig.Level = logging.LevelDebug
+	}
+	logger, err := logging.NewLogger(logConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	return logging.WithComponent(logger, "server"), nil
+}
+
+func initServerConfig() (*config.Config, error) {
+	var cliFormat *string
+	if format := rootCmd.Flag("output-format").Value.String(); format != "" {
+		cliFormat = &format
+	}
+	cliReadonly := &readonly
+
+	cfg, err := config.Load(cliFormat, cliReadonly)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create server configuration: %w", err)
+	}
+	cfg.Transport = config.TransportHTTP
+	return cfg, nil
+}
+
+func applyServerFlags(cfg *config.Config) error {
+	if httpHost != "" {
+		cfg.HTTP.Host = httpHost
+	}
+	if httpPort > 0 {
+		cfg.HTTP.Port = httpPort
+	}
+
+	if err := parseTimeouts(cfg); err != nil {
+		return err
+	}
+
+	if stateless {
+		cfg.HTTP.Stateless = stateless
+	}
+	return nil
+}
+
+type timeoutConfig struct {
+	value     string
+	field     *time.Duration
+	fieldName string
+}
+
+func parseTimeouts(cfg *config.Config) error {
+	timeouts := []timeoutConfig{
+		{sessionTimeout, &cfg.HTTP.SessionTimeout, "session timeout"},
+		{readTimeout, &cfg.HTTP.ReadTimeout, "read timeout"},
+		{writeTimeout, &cfg.HTTP.WriteTimeout, "write timeout"},
+		{idleTimeout, &cfg.HTTP.IdleTimeout, "idle timeout"},
+	}
+
+	for _, t := range timeouts {
+		if t.value == "" {
+			continue
+		}
+		d, err := time.ParseDuration(t.value)
+		if err != nil {
+			return fmt.Errorf("invalid %s: %w", t.fieldName, err)
+		}
+		*t.field = d
+	}
 	return nil
 }
