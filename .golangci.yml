@@ -2,30 +2,17 @@ version: "2"
 
 run:
   timeout: 10m
-  tests: true
-  skip-dirs:
-    - vendor
-  exclude-rules:
-    - path: cmd/.*_test\.go
-      linters:
-        - forbidigo
 
 linters:
   enable:
-    # Core
     - errcheck
     - govet
     - ineffassign
     - staticcheck
     - unused
-    
-    # Security
     - gosec
-    
-    # Code quality
     - gocritic
     - gocyclo
-    - dupl
     - funlen
     - gocheckcompilerdirectives
     - gocognit
@@ -35,13 +22,7 @@ linters:
     - makezero
     - prealloc
     - revive
-    
-    # Testing
-# As an integration project we have to carefully think about this.
-#    - paralleltest
     - testifylint
-    
-    # Modern practices
     - exhaustive
     - forbidigo
   settings:
@@ -49,34 +30,28 @@ linters:
       min-complexity: 8
     gosec:
       excludes:
-        - G204  # Subprocess launching may be allowed in this context
+        - G204
     gocognit:
       min-complexity: 20
     dupl:
       threshold: 80
-      tests: false
     misspell:
       locale: US
     forbidigo:
-      exclude-files:
-        - ".*_test\\.go$"
       forbid:
         - pattern: "context.Background"
           msg: "Pass a context in or use t.Context()"
         - pattern: "context.TODO"
           msg: "Pass a context in or use t.Context()"
-
     godoclint:
       options:
         rules:
           - require-doc
           - start-with-name
           - max-len
-
     funlen:
       lines: 150
       statements: 100
-
     gocritic:
       enabled-tags:
         - diagnostic
@@ -90,15 +65,11 @@ linters:
         - octalLiteral
         - whyNoLint
         - wrapperFunc
-
     errcheck:
       check-type-assertions: true
-      check-blank: true  # Allow _ = errors for explicit ignoring
+      check-blank: true
       exclude-functions:
-        - (fmt\.Fprintf).*outputWriter  # CLI user output is legitimate
-
-    paralleltest:
-      ignore-missing-subtests: true  # Require explicit t.Parallel() calls for all tests
+        - (fmt\.Fprintf).*outputWriter
 
 formatters:
   enable:
