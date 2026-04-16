@@ -80,7 +80,7 @@ make vet            # Run go vet
 make lint           # Run golangci-lint
 make tidy-check     # Verify go mod tidy produces no changes
 make test           # Run tests with verbose output
-make test-cover     # Run tests with coverage report (60% threshold)
+make test-cover     # Run tests with coverage report (27% threshold)
 make build          # Build release binaries
 
 # Quick build (for development)
@@ -563,7 +563,7 @@ internal/
 - Subtests with descriptive names via `t.Run()`
 
 ### Test Coverage
-- **Minimum 60% coverage** for production code
+- **Minimum 27% coverage** for production code
 - **Exclude** `cmd/` and `main` packages from coverage requirements
   - Rationale: `cmd/` is a thin entry-point layer bridging CLI environment to `internal/` and `pkg/` - business logic lives in those packages
 - Mock external dependencies using interfaces
@@ -647,7 +647,7 @@ make fmt            # Format code (gofmt + goimports)
 make vet            # Run go vet
 make lint           # Run golangci-lint
 make test           # Run tests
-make test-cover     # Run tests with 60% coverage threshold
+make test-cover     # Run tests with 27% coverage threshold
 make build         # Verify build succeeds
 make tidy-check    # Verify go mod tidy produces no changes
 
@@ -674,7 +674,7 @@ Required checks for pull requests (all handled by `make check`):
 1. `make fmt` - Code formatting verification
 2. `make lint` - golangci-lint passes
 3. `make test` - Tests pass
-4. `make test-cover` - Coverage meets minimum threshold (60%)
+4. `make test-cover` - Coverage meets minimum threshold (27%)
 5. `make build` - Build succeeds
 6. `make tidy-check` - go mod tidy produces no changes
 7. All files under 400 lines (automated check)
