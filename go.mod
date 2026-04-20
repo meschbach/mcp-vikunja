@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/fatih/color v1.19.0
-	github.com/go-openapi/runtime v0.29.3
+	github.com/go-openapi/runtime v0.29.4
 	github.com/go-openapi/strfmt v0.26.1
 	github.com/meschbach/vikunja-client-go v0.0.1
 	github.com/modelcontextprotocol/go-sdk v1.5.0
